@@ -211,7 +211,11 @@ export default class ScratchJr {
         ScratchJr.log('starting the app');
         BlockSpecs.initBlocks();
         Project.loadIcon = document.createElement('img');
-        Project.loadIcon.src = 'assets/loading.png';
+        // En el modo Libre de STBlock Kids mostramos la marca STBlock Kids en
+        // lugar del logo de ScratchJr durante la carga del editor.
+        Project.loadIcon.src = urlvars.stblockKidsMode === 'free'
+            ? 'assets/stblock-kids-loading.png'
+            : 'assets/loading.png';
         ScratchJr.log('blocks init', ScratchJr.getTime(), 'sec', BlockSpecs.loadCount);
         currentProject = urlvars.pmd5;
         editmode = urlvars.mode;
