@@ -20,6 +20,12 @@ function loadSettings (settingsRoot, whenDone) {
 				autoSaveInterval: 60000,
 			});
 		}
+		if (document.documentElement.dataset.stblockKids === 'true') {
+			const kidsMode = /** @type {any} */ (window).STBLOCK_KIDS_MODE || document.body.dataset.stblockKidsMode;
+			const settings = /** @type {any} */ (window.Settings || {});
+			settings.defaultSprite = kidsMode === 'robot' ? 'StblockRobot.svg' : 'StblockKids.svg';
+			window.Settings = settings;
+		}
 		whenDone();
 	});
 }
@@ -46,6 +52,19 @@ const pageEntries = {
  */
 export function bootApp () {
 	let started = false;
+	// Set the Kids runtime flag before the dynamically loaded lobby/editor entry
+	// builds its UI. The parent also applies this flag on iframe load, but that
+	// happens after ScratchJr has initialized its page chrome.
+	if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+		const params = new URLSearchParams(window.location.search);
+		if (params.get('stblockKids') === '1' || params.has('stblockKidsMode')) {
+			document.documentElement.dataset.stblockKids = 'true';
+			if (document.body) {
+				document.body.dataset.stblockKidsMode = params.get('stblockKidsMode') || 'free';
+				document.body.dataset.stblockKidsMobile = params.get('stblockKidsMobile') === '1' ? 'true' : 'false';
+			}
+		}
+	}
 	const start = () => {
 		if (started) return;
 		started = true;

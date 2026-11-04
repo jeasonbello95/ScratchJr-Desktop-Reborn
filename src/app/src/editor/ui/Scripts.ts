@@ -98,7 +98,6 @@ export default class Scripts {
             if (!hit3DRect(ths, pt)) {
                 continue;
             }
-        
             Events.startDrag(e, ths as HTMLElement, ScriptsPane.prepareToDrag, ScriptsPane.dropBlock, ScriptsPane.draggingBlock, ScriptsPane.runBlock);
             return;
         }
@@ -110,11 +109,26 @@ export default class Scripts {
     ////////////////////////////////////////////////
 
     addBlockToScripts (b: HTMLElement, dx: number, dy: number) {
+        const incoming = getModelRefAs<Block>(b, 'block');
+        const isPopSound = incoming?.blocktype === 'playsnd' && incoming.getArgValue() === 'pop.mp3';
+        if (isPopSound) console.log('[STB_POP_DROP] add-start', {
+            origin: b.origin || null,
+            incomingParent: b.parentElement?.id || null,
+            oldDragList: this.dragList.map(block => block.blocktype),
+            dx: Math.round(dx),
+            dy: Math.round(dy)
+        });
+        // A palette drag is always one new block; ignore any stale script drag group.
+        if (b.origin === 'palette' && incoming) {
+            this.dragList = [incoming];
+        }
         if ((this.flowCaret != null) && (this.flowCaret.div.parentNode == this.sc)) {
             this.sc.removeChild(this.flowCaret.div);
         }
         this.flowCaret = null;
-        Events.dragDiv.removeChild(b);
+        if (b.parentElement === Events.dragDiv) {
+            Events.dragDiv.removeChild(b);
+        }
         this.sc.appendChild(b);
         //  b.owner.drop();
         getModelRefAs<Block>(b, 'block')!.moveBlock(dx, dy);
@@ -124,8 +138,23 @@ export default class Scripts {
             this.sc.appendChild(piece);
         //   piece.owner.drop();
         }
+        if (isPopSound) console.log('[STB_POP_DROP] add-before-layout', {
+            parent: b.parentElement?.id || null,
+            left: Math.round(getModelRefAs<Block>(b, 'block')?.div.left || 0),
+            top: Math.round(getModelRefAs<Block>(b, 'block')?.div.top || 0)
+        });
         this.layout(getModelRefAs<Block>(b, 'block')!);
+        if (isPopSound) console.log('[STB_POP_DROP] add-after-layout');
         this.snapToPlace(this.dragList);
+        if (isPopSound) console.log('[STB_POP_DROP] add-after-snap');
+        if (isPopSound) console.log('[STB_POP_DROP] add-finished', {
+            prev: incoming?.prev?.blocktype || null,
+            next: incoming?.next?.blocktype || null,
+            dragCount: this.dragList.length,
+            parent: incoming?.div.parentElement?.id || null,
+            left: Math.round(incoming?.div.left || 0),
+            top: Math.round(incoming?.div.top || 0)
+        });
         if (getModelRefAs<Block>(b, 'block')!.cShape) {
             this.sendToBack(getModelRefAs<Block>(b, 'block')!);
         }
@@ -133,16 +162,17 @@ export default class Scripts {
     }
 
 
-    sendToBack (b: Block) {
+    sendToBack (b: Block, visited = new Set<Block>()) {
         if (!b.inside) {
             return;
         }
         var you = b.inside;
-        while (you != null) {
+        while (you != null && !visited.has(you)) {
+            visited.add(you);
             var p = you.div.parentNode;
             p!.appendChild(you.div);
             if (you.cShape) {
-                this.sendToBack(you);
+                this.sendToBack(you, visited);
             }
             you = you.next;
         }
@@ -160,13 +190,24 @@ export default class Scripts {
     snapBlock (drag: Block[]) {
         var me = drag[0];
         var last = me.findLast();
+        const isPopSound = me.blocktype === 'playsnd' && me.getArgValue() === 'pop.mp3';
         var res = this.findClosest(this.available(0, me, drag), me);
-        if (this.isValid(me, res, 0)) {
+        const firstValid = this.isValid(me, res, 0);
+        if (isPopSound) console.log('[STB_POP_DROP] snap-first', {
+            candidate: res ? {type: res[0].blocktype, dock: res[1], distance: Math.round(res[2])} : null,
+            valid: firstValid
+        });
+        if (firstValid) {
             this.snapToDock(res, me, 0, drag);
             return;
         }
         res = this.findClosest(this.available(last.cShape ? 2 : 1, last, drag), last);
-        if (!this.isValid(last, res, last.cShape ? 2 : 1)) {
+        const lastValid = this.isValid(last, res, last.cShape ? 2 : 1);
+        if (isPopSound) console.log('[STB_POP_DROP] snap-last', {
+            candidate: res ? {type: res[0].blocktype, dock: res[1], distance: Math.round(res[2])} : null,
+            valid: lastValid
+        });
+        if (!lastValid) {
             return;
         }
         this.snapToDock(res, last, last.cShape ? 2 : 1, drag);
@@ -200,7 +241,8 @@ export default class Scripts {
         }
         var you = res[0];
         var yourn = res[1];
-        if (res[2] > 30) {
+        const isPopSound = me.blocktype === 'playsnd' && me.getArgValue() === 'pop.mp3';
+        if (res[2] > (isPopSound ? 80 : 30)) {
             return false;
         }
         if (me.cShape && (myn == 1) && you.anEnd) {
@@ -228,7 +270,12 @@ export default class Scripts {
 
 
     insideCShape (you: Block) {
+        const visited = new Set<Block>();
         while (you != null) {
+            if (visited.has(you)) {
+                return false;
+            }
+            visited.add(you);
             var next = you.prev;
             if (next == null) {
                 return false;
@@ -349,10 +396,11 @@ export default class Scripts {
         this.layoutStrip(first);
     }
 
-    layoutStrip (b: Block) {
-        while (b != null) {
+    layoutStrip (b: Block, visited = new Set<Block>()) {
+        while (b != null && !visited.has(b)) {
+            visited.add(b);
             if (b.cShape) {
-                this.layoutCshape(b);
+                this.layoutCshape(b, visited);
             }
             this.layoutNextBlock(b);
             b = b.next;
@@ -370,14 +418,14 @@ export default class Scripts {
         }
     }
 
-    layoutCshape (b: Block) {
+    layoutCshape (b: Block, visited = new Set<Block>()) {
         var inside = 0;
         var maxh = 0;
         var oldh = b.hrubberband;
         var cblock = b.inside;
         if (cblock != null) {
             this.adjustPos(cblock, 0, b, 1);
-            this.layoutStrip(cblock);
+            this.layoutStrip(cblock, visited);
             inside += this.adjustCinside(cblock);
             maxh += this.adjustCheight(cblock);
         }
@@ -397,7 +445,9 @@ export default class Scripts {
         var old = b;
         var h = b.blockshape.height;
         b = b.next;
-        while (b != null) {
+        const visited = new Set<Block>([old]);
+        while (b != null && !visited.has(b)) {
+            visited.add(b);
             if (b.blockshape.height > h) {
                 h = b.blockshape.height;
             }
@@ -410,7 +460,9 @@ export default class Scripts {
     adjustCinside (b: Block) {
         var first = b;
         var last = b;
-        while (b != null) {
+        const visited = new Set<Block>();
+        while (b != null && !visited.has(b)) {
+            visited.add(b);
             last = b;
             b = b.next;
         }
@@ -447,10 +499,15 @@ export default class Scripts {
     }
 
     findingGroup (res: Block[], b: Block) {
-        while (b != null) {
+        return this.collectGroup(res, b, new Set(res));
+    }
+
+    collectGroup (res: Block[], b: Block, visited: Set<Block>) {
+        while (b != null && !visited.has(b)) {
+            visited.add(b);
             res.push(b);
             if (b.cShape) {
-                this.findingGroup(res, b.inside);
+                this.collectGroup(res, b.inside, visited);
             }
             b = b.next;
         }
@@ -626,6 +683,16 @@ export default class Scripts {
         }
     }
 
+    clearProgram () {
+        this.removeCaret();
+        for (const block of this.getBlocks()) {
+            ScratchJr.runtime.stopThreadBlock(block.findFirst());
+            if (block.div.parentNode) block.div.parentNode.removeChild(block.div);
+        }
+        this.dragList = [];
+        this.flowCaret = null;
+    }
+
     recreateStrip (list: EncodedStrip) {
         var res: Block[] = [];
         var b: Block | null = null;
@@ -704,5 +771,70 @@ export default class Scripts {
         this.sc.appendChild(bbx.div);
         bbx.update(this.spr);
         return bbx;
+    }
+
+    // Remove every block from this sprite's script area (used before installing a
+    // ready-made program so repeated clicks do not stack duplicates).
+    clearScripts () {
+        for (const block of this.getBlocks()) {
+            if (block && block.div && block.div.parentNode) {
+                block.div.parentNode.removeChild(block.div);
+            }
+        }
+        if (this.flowCaret && this.flowCaret.div && this.flowCaret.div.parentNode) {
+            this.flowCaret.div.parentNode.removeChild(this.flowCaret.div);
+        }
+        this.flowCaret = null;
+        this.dragList = [];
+    }
+
+    // Build a program from simple rows and install it as this sprite's script.
+    // Row shape: [opcode, argValue?, children?] where children is another row array.
+    // Returns the first (hat) block, or null when nothing could be built.
+    installProgram (program: unknown) {
+        this.clearScripts();
+        const first = this.buildProgramRows(program);
+        if (!first) {
+            return null;
+        }
+        first.moveBlock(20, 20);
+        this.layout(first);
+        ScratchJr.changed = true;
+        return first;
+    }
+
+    buildProgramRows (rows: unknown): Block | null {
+        if (!Array.isArray(rows)) {
+            return null;
+        }
+        let first: Block | null = null;
+        let prev: Block | null = null;
+        for (const rawRow of rows) {
+            if (!Array.isArray(rawRow) || typeof rawRow[0] !== 'string') {
+                continue;
+            }
+            const op = rawRow[0] as string;
+            if (!(BlockSpecs.defs as Record<string, unknown>)[op]) {
+                continue;
+            }
+            const arg = rawRow[1] === undefined ? null : rawRow[1];
+            const children = rawRow[2];
+            const block = this.recreateBlock([op, arg === null ? 'null' : arg as string | number, 0, 0]);
+            if (block.cShape && Array.isArray(children)) {
+                const childFirst = this.buildProgramRows(children);
+                if (childFirst) {
+                    block.connectBlock(1, childFirst, 0);
+                    block.redrawRepeat();
+                    this.sendToBack(block);
+                }
+            }
+            if (prev) {
+                prev.connectBlock(prev.cShape ? 2 : 1, block, 0);
+            } else {
+                first = block;
+            }
+            prev = block;
+        }
+        return first;
     }
 }

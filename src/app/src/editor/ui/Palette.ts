@@ -32,7 +32,6 @@ let blockdy = 5;
 let timeoutid: NodeJS.Timeout | null = null;
 let helpballoon: (HTMLCanvasElement & { icon?: unknown }) | null = null;
 let dxblocks = 10;
-
 export default class Palette {
     static blockdx: number;
 
@@ -287,11 +286,51 @@ export default class Palette {
         var my = Events.dragmousey - frame.offsetTop - localy(Events.dragthumbnail, Events.dragmousey);
         const dragOwner = getModelRefAs<Block>(Events.dragthumbnail, 'block')!;
         Events.dragcanvas = dragOwner.duplicateBlock(mx, my, sc.spr).div;
+        Events.dragcanvas.origin = 'palette';
         Events.dragcanvas.style.zIndex = String(ScratchJr.dragginLayer);
         Events.dragDiv.appendChild(Events.dragcanvas);
+        // Capture the pointer on the drag clone so pointermove/pointerup keep
+        // flowing even when the WebView stops delivering legacy mouse events.
+        Events.captureActivePointer(Events.dragcanvas);
         // Events.dragcanvas.owner.lift();
         sc.dragList = [getModelRefAs<Block>(Events.dragcanvas, 'block')!];
+        // Comparative drag trace for every block.
         sc.prepareCaret(getModelRefAs<Block>(Events.dragcanvas, 'block')!);
+        Palette.speakBlockName(dragOwner);
+    }
+
+    static speakBlockName (block: Block) {
+        const params = new URLSearchParams(window.location.search);
+        let kidsMode = params.get('stblockKidsMode');
+        let voiceDisabled = false;
+        try {
+            kidsMode = kidsMode || window.sessionStorage.getItem('stblockKidsMode');
+            voiceDisabled = window.localStorage.getItem('stblockKidsBlockVoice') === 'off';
+        } catch (_error) {
+            // Browser storage may be unavailable in a restricted webview.
+        }
+        if (!kidsMode || voiceDisabled || !('speechSynthesis' in window)) {
+            return;
+        }
+        const descriptions = BlockSpecs.blockDesc(block, ScratchJr.getSprite()) as {[key: string]: string};
+        const description = descriptions[block.blocktype];
+        if (!description) {
+            return;
+        }
+        const utterance = new SpeechSynthesisUtterance(description.toLocaleLowerCase());
+        utterance.lang = document.documentElement.lang || navigator.language || 'es-ES';
+        utterance.rate = 0.9;
+        window.setTimeout(() => {
+            try {
+                const synthesis = window.speechSynthesis;
+                if (!synthesis || synthesis.speaking || synthesis.pending) {
+                    return;
+                }
+                synthesis.speak(utterance);
+            } catch (_error) {
+                // Speech output must never interrupt block dragging.
+            }
+        }, 0);
     }
 
     static getBlockNamed (str: string) {
@@ -315,7 +354,9 @@ export default class Palette {
         div.setAttribute('role', 'tab');
         div.setAttribute('tabindex', n === 0 ? '0' : '-1');
         div.setAttribute('aria-selected', n === 0 ? 'true' : 'false');
-        var catNames = ['Start', 'Motion', 'Looks', 'Sound', 'Flow', 'End'];
+        const params = new URLSearchParams(window.location.search);
+        const kidsMode = params.get('stblockKidsMode') || window.sessionStorage.getItem('stblockKidsMode');
+        var catNames = kidsMode === 'robot' || kidsMode === 'story' ? ['Start', 'Motion', 'Flow', 'End'] : ['Start', 'Motion', 'Looks', 'Sound', 'Flow', 'End'];
         if (catNames[n]) {
             div.setAttribute('aria-label', catNames[n]);
         }
@@ -403,7 +444,7 @@ export default class Palette {
                 var newb = Palette.newScaledBlock(pal, list[k],
                     ((list[k] == 'repeat') ? 0.65 * scaleMultiplier : blockscale), dx, blockdy);
                 newb.lift();
-                dx += betweenblocks!;
+                dx += Math.max(betweenblocks!, newb.div.offsetWidth + 16);
             }
         }
         dx += 30;
@@ -644,8 +685,23 @@ export default class Palette {
 
     static dropBlockFromPalette (e: MouseEvent | TouchEvent, element: HTMLElement) {
         e.preventDefault();
-        switch (Palette.getLandingPlace(element, e)) {
+        if (!element) {
+            console.warn('Palette.dropBlockFromPalette: no dragged element');
+            return;
+        }
+        const landing = Palette.getLandingPlace(element, e);
+        const dragged = getModelRefAs<Block>(element, 'block');
+        switch (landing) {
         case 'scripts':
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+                const draggedBlock = getModelRefAs<Block>(element, 'block');
+                const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {canAddMovementBlock?: (type: unknown) => boolean; notifyRuleViolation?: (message: unknown) => unknown}}).STBLOCK_KIDS_STORY;
+                if (draggedBlock && storyApi?.canAddMovementBlock?.(draggedBlock.blocktype) === false) {
+                    storyApi.notifyRuleViolation?.('En este mundo coloca un solo bloque de cada movimiento. Déjalo en 1 y usa Repetir.');
+                    getModelRefAs<Scripts>(ScratchJr.getActiveScript(), 'scripts')!.dragList = [];
+                    return;
+                }
+            }
             PlatformBridge.analyticsEvent('editor', 'new_block', getModelRefAs<Block>(element, 'block')!.blocktype);
             var sc = ScratchJr.getActiveScript();
             var dx = localx(sc, element.left!);

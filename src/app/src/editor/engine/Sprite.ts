@@ -141,7 +141,7 @@ export default class Sprite {
         }
         function nextStep (base64: string) {
             if (!base64) {
-                whenDone('');
+                useMissingAssetFallback();
                 return;
             }
             var str = base64ToUtf8(base64);
@@ -157,6 +157,10 @@ export default class Sprite {
             }
         }
         function doNext (str: string) {
+            if (!str) {
+                useMissingAssetFallback();
+                return;
+            }
             str = str.replace(/>\s*</g, '><');
             spr.setSVG(str);
             var dataUrl = IO.getImageDataURL(spr.md5, utf8ToBase64(str));
@@ -167,6 +171,12 @@ export default class Sprite {
                     whenDone(dataUrl);
                 });
             }
+        }
+        function useMissingAssetFallback () {
+            console.warn(`[sprite] Missing costume media "${spr.md5}"; showing a placeholder.`);
+            const fallbackSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="43" fill="#F5E6A8" stroke="#9C7A29" stroke-width="5"/><text x="48" y="66" text-anchor="middle" font-family="sans-serif" font-size="54" font-weight="bold" fill="#6E5718">?</text></svg>';
+            spr.setSVG(fallbackSvg);
+            whenDone(`data:image/svg+xml;base64,${utf8ToBase64(fallbackSvg)}`);
         }
     }
 
@@ -203,10 +213,10 @@ export default class Sprite {
     }
 
     displaySprite (whenDone?: (spr: Sprite) => void) {
-        var w = this.img.width;
-        var h = this.img.height;
-        this.div.style.width = this.img.width + 'px';
-        this.div.style.height = this.img.height + 'px';
+        var w = this.img.naturalWidth || this.img.width || 128;
+        var h = this.img.naturalHeight || this.img.height || 128;
+        this.div.style.width = w + 'px';
+        this.div.style.height = h + 'px';
         this.cx = Math.floor(w / 2);
         this.cy = Math.floor(h / 2);
         this.w = w;
@@ -227,8 +237,8 @@ export default class Sprite {
     }
 
     drawBorder () {
-        var w = this.img.width;
-        var h = this.img.height;
+        var w = this.img.naturalWidth || this.img.width || this.w || 128;
+        var h = this.img.naturalHeight || this.img.height || this.h || 128;
         var extxml = this.svg;
         this.border = document.createElement('canvas');
         setCanvasSize(this.border, w, h);
@@ -296,21 +306,25 @@ export default class Sprite {
         }
         setCanvasSize(cnv, w, h);
         var img: HTMLImageElement = this.img;
-        var imgw = img.naturalWidth ? img.naturalWidth : img.width;
-        var imgh = img.naturalHeight ? img.naturalHeight : img.height;
+        var imgw = img.naturalWidth || img.width || this.w || 128;
+        var imgh = img.naturalHeight || img.height || this.h || 128;
         var scale = Math.min(w / imgw, h / imgh);
         var ctx = cnv.getContext('2d')!;
         var iw = Math.floor(scale * imgw);
         var ih = Math.floor(scale * imgh);
         var ix = Math.floor((w - (scale * imgw)) / 2);
         var iy = Math.floor((h - (scale * imgh)) / 2);
-        ctx.drawImage(this.border, 0, 0, this.border.width, this.border.height, ix, iy, iw, ih);
+        if (this.border && this.border.width > 0 && this.border.height > 0) {
+            ctx.drawImage(this.border, 0, 0, this.border.width, this.border.height, ix, iy, iw, ih);
+        }
         if (!img.complete) {
             img.onload = function () {
-                ctx.drawImage(img, 0, 0, imgw, imgh, ix, iy, iw, ih);
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, ix, iy, iw, ih);
+                }
             };
-        } else {
-            ctx.drawImage(img, 0, 0, imgw, imgh, ix, iy, iw, ih);
+        } else if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, ix, iy, iw, ih);
         }
     }
 
@@ -1177,7 +1191,17 @@ Math.floor(h));
 
     getSVGimage (svg: Element) {
         var img = document.createElement('img');
-        var str = (new XMLSerializer()).serializeToString(svg);
+        // A few legacy projects contain costumes that fail to produce a watermark
+        // element. Keep sprite activation resilient and serialize a valid SVG node.
+        var source = svg && typeof svg.nodeType === 'number' && svg.nodeType === Node.ELEMENT_NODE ? svg : this.svg;
+        if (!source || source.localName !== 'svg') {
+            console.warn('[sprite] Missing SVG watermark; showing a placeholder.');
+            source = new DOMParser().parseFromString(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="43" fill="#F5E6A8" stroke="#9C7A29" stroke-width="5"/><text x="48" y="66" text-anchor="middle" font-family="sans-serif" font-size="54" font-weight="bold" fill="#6E5718">?</text></svg>',
+                'image/svg+xml'
+            ).documentElement;
+        }
+        var str = (new XMLSerializer()).serializeToString(source);
         str = str.replace(/ href="data:image/g, ' xlink:href="data:image');
         img.src = 'data:image/svg+xml;base64,' + utf8ToBase64(str);
         return img;

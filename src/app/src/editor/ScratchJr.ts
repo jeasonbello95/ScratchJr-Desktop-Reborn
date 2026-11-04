@@ -438,7 +438,49 @@ export default class ScratchJr {
 
     static startGreenFlagThreads () {
         ScratchJr.resetSprites();
+        if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+            (window as Window & {STBLOCK_KIDS_STORY?: {resetRun?: () => unknown}}).STBLOCK_KIDS_STORY?.resetRun?.();
+            window.parent.postMessage({type: 'STBLOCK_KIDS_STORY_RUN_STARTED'}, window.location.origin);
+        }
+        const storyLevel = Number((window as Window & {STBLOCK_KIDS_STORY_CONFIG?: {level?: number}}).STBLOCK_KIDS_STORY_CONFIG?.level);
+        if (window.sessionStorage.getItem('stblockKidsMode') === 'story' && [11, 12, 15, 16, 17, 19, 20].includes(storyLevel)) {
+            ScratchJr.startMultiActorStoryScriptsInOrder();
+            return;
+        }
         ScratchJr.startCurrentPageStrips(['onflag', 'ontouch', 'ontouchcolor', 'ontouchsprite']);
+    }
+
+    static startMultiActorStoryScriptsInOrder () {
+        const page = stage.currentPage.div;
+        const sprites: Sprite[] = [];
+        for (var i = 0; i < page.childElementCount; i++) {
+            const sprite = getModelRefAs<Sprite>(page.childNodes[i] as HTMLElement, 'sprite')!;
+            if (sprite && gn(sprite.id + '_scripts')) sprites.push(sprite);
+        }
+        const primary = sprites.find(sprite => sprite.name === 'STBlock');
+        // Secondary characters run one after another: STBlock -> Mistral -> Vega.
+        const secondaryChain = ['Mistral', 'Vega']
+            .map(name => sprites.find(sprite => sprite.name === name))
+            .filter((sprite): sprite is Sprite => Boolean(sprite));
+        const others = sprites.filter(sprite => sprite !== primary && !secondaryChain.includes(sprite));
+        const eventTypes = ['ontouch', 'ontouchcolor', 'ontouchsprite'];
+        for (const sprite of sprites) ScratchJr.startScriptsFor(sprite, eventTypes);
+
+        const startChain = (chain: Sprite[]) => {
+            const [next, ...rest] = chain;
+            if (!next) {
+                for (const sprite of others) ScratchJr.startScriptsFor(sprite, ['onflag']);
+                return;
+            }
+            ScratchJr.startScriptsFor(next, ['onflag']);
+            runtime.runAfterSpriteCompletes(next, () => startChain(rest));
+        };
+        if (!primary) {
+            startChain(secondaryChain);
+            return;
+        }
+        ScratchJr.startScriptsFor(primary, ['onflag']);
+        runtime.runAfterSpriteCompletes(primary, () => startChain(secondaryChain));
     }
 
     static startCurrentPageStrips (list: string[]) {
@@ -474,6 +516,7 @@ export default class ScratchJr {
     }
 
     static stopStrips () {
+        Prims.sendRobotCommand('stop', '', 0);
         runtime.stopThreads();
         stage.currentPage.updateThumb();
     }
@@ -588,6 +631,14 @@ export default class ScratchJr {
         e.stopPropagation();
         // arg divs carry their BlockArg via the model registry (BlockArg.createButton)
         const argOwner = ti ? getModelRefAs<BlockArg>(ti, 'blockarg') : undefined;
+        if (window.sessionStorage.getItem('stblockKidsMode') === 'story' && argOwner && !argOwner.isText()) {
+            const storyConfig = (window as Window & {STBLOCK_KIDS_STORY_CONFIG?: {challenge?: {movementRules?: {allowedTypes?: string[]; fixedStep?: number}}}}).STBLOCK_KIDS_STORY_CONFIG;
+            const movementRules = storyConfig?.challenge?.movementRules;
+            if (movementRules && (movementRules.allowedTypes || []).includes(argOwner.daddy.blocktype)) {
+                (window as Window & {STBLOCK_KIDS_STORY?: {notifyRuleViolation?: (message: unknown) => unknown}}).STBLOCK_KIDS_STORY?.notifyRuleViolation?.('Deja este movimiento en 1. Usa el bloque Repetir para repetir el paso.');
+                return;
+            }
+        }
         if (argOwner && argOwner.isText()) {
             ScratchJr.textClicked(e, ti);
         } else {

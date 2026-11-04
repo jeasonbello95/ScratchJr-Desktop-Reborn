@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 
 const rootDir = path.resolve(__dirname, '..');
@@ -85,22 +86,33 @@ function main() {
         }
     }
 
-    // Stamp Service Worker CACHE_NAME with package.json version and inject all code-split dist/*.js chunks into PRECACHE_URLS
+    // Version the Service Worker cache with both the package and generated chunk names.
+    // Otherwise browsers can retain an old app.bundle.js that requests chunks removed by a newer build.
     const pkg = require(path.join(rootDir, 'package.json'));
     const swDestPath = path.join(targetAppDir, 'sw.js');
     if (fs.existsSync(swDestPath)) {
         let swContent = fs.readFileSync(swDestPath, 'utf8');
+        const distDir = path.join(srcAppDir, 'dist');
+        const distJsFiles = fs.existsSync(distDir)
+            ? fs.readdirSync(distDir).filter((file) => file.endsWith('.js')).sort()
+            : [];
+        const distFingerprint = distJsFiles.map((file) => {
+            const fileHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(distDir, file))).digest('hex');
+            return `${file}:${fileHash}`;
+        }).join('\n');
+        const hostClientPath = path.join(rootDir, 'src', 'hostClient.js');
+        const hostClientFingerprint = fs.existsSync(hostClientPath)
+            ? crypto.createHash('sha256').update(fs.readFileSync(hostClientPath)).digest('hex')
+            : '';
+        const cacheRevision = crypto.createHash('sha256')
+            .update(`${distFingerprint}\nhostClient:${hostClientFingerprint}`)
+            .digest('hex').slice(0, 10);
         swContent = swContent.replace(
             /var CACHE_NAME\s*=\s*'scratchjr-pwa-v[^']*';/,
-            `var CACHE_NAME = 'scratchjr-pwa-v${pkg.version}';`
+            `var CACHE_NAME = 'scratchjr-pwa-v${pkg.version}-${cacheRevision}';`
         );
-        const distDir = path.join(srcAppDir, 'dist');
         if (fs.existsSync(distDir)) {
-            const distJsUrls = fs.readdirSync(distDir)
-                .filter((f) => f.endsWith('.js'))
-                .sort()
-                .map((f) => `'./dist/${f}'`)
-                .join(',\n  ');
+            const distJsUrls = distJsFiles.map((file) => `'./dist/${file}'`).join(',\n  ');
             if (distJsUrls) {
                 swContent = swContent.replace(/'\.\/dist\/app\.bundle\.js'/, distJsUrls);
             }

@@ -183,7 +183,7 @@ export default class BlockSpecs {
     }
 
     static setupCategories () {
-        return [
+        const categories = [
             [
                 BlockSpecs.getImageFrom('assets/categories/StartOn', 'svg'),
                 BlockSpecs.getImageFrom('assets/categories/StartOff', 'svg'),
@@ -215,16 +215,94 @@ export default class BlockSpecs {
                 window.Settings!.categoryStopColor
             ]
         ];
+        const params = new URLSearchParams(window.location.search);
+        const kidsMode = params.get('stblockKidsMode') || window.sessionStorage.getItem('stblockKidsMode');
+        if (kidsMode === 'robot') return [categories[0], categories[1], categories[4], categories[5]];
+        if (kidsMode === 'story') return [categories[0], categories[1], categories[2], categories[3], categories[4], categories[5]];
+        return categories;
     }
 
 
     static setupPalettesDef () {
+        // Robot projects retain only blocks which map to a mobile robot:
+        // green-flag start, relative movement, repeat, and end.
+        const params = new URLSearchParams(window.location.search);
+        const kidsMode = params.get('stblockKidsMode') || window.sessionStorage.getItem('stblockKidsMode');
+        if (kidsMode === 'robot') {
+            return [
+                ['onflag'],
+                ['forward', 'back', 'right', 'left'],
+                ['repeat'],
+                ['endstack']
+            ];
+        }
+        if (kidsMode === 'story') {
+            return [
+                ['onflag'],
+                ['forward', 'back', 'up', 'down'],
+                [],
+                [],
+                [],
+                ['endstack']
+            ];
+        }
         return [['onflag', 'onclick', 'ontouch', 'ontouchsprite', 'ontouchcolor', 'onmessage', 'message'],
             ['forward', 'back', 'up', 'down', 'right', 'left', 'flipX', 'hop', 'home', 'randompos'],
             ['say', 'space', 'grow', 'shrink', 'same', 'space', 'hide', 'show', 'space', 'color', 'fade'],
             [],
             ['wait', 'waitrandom', 'stopmine', 'setspeed', 'repeat'],
             ['endstack', 'forever', 'randompage']];
+    }
+
+    static configureStoryPalette (challenge: {requiredBlocks?: string[]; requiredBlockSequence?: string[]; requiredActions?: Array<{type?: string}>; availableBlocks?: string[]; movementRules?: {allowedTypes?: string[]; fixedStep?: number}; waitSeconds?: number; repeatCount?: number; repeatDefault?: number}) {
+        const requiredBlocks = challenge.requiredBlocks || [];
+        const requiredSequence = challenge.requiredBlockSequence || [];
+        const actions = challenge.requiredActions || [];
+        const available = new Set(challenge.availableBlocks || []);
+        const needs = (type: string) => available.has(type) || actions.some(action => action.type === type);
+        const useRepeat = available.has('repeat') || requiredBlocks.includes('repeat') || requiredSequence.includes('repeat');
+        const useStoryIf = available.has('storyif') || requiredBlocks.includes('storyif') || requiredSequence.includes('storyif');
+        const useWait = available.has('wait') || requiredBlocks.includes('wait') || requiredSequence.includes('wait');
+        const movementBlocks = challenge.movementRules?.allowedTypes || ['forward', 'back', 'up', 'down'];
+        const extraMovementBlocks = [
+            ...(available.has('storyjump') || requiredBlocks.includes('storyjump') ? ['storyjump'] : []),
+            ...(available.has('cloudfly') ? ['cloudfly'] : [])
+        ];
+        if (BlockSpecs.defs.wait) {
+            const waitSeconds = Number(challenge.waitSeconds);
+            BlockSpecs.defs.wait[4] = waitSeconds > 0 ? waitSeconds : 10;
+            BlockSpecs.defs.wait[6] = waitSeconds > 0 ? waitSeconds : 0;
+            BlockSpecs.defs.wait[7] = waitSeconds > 0 ? waitSeconds : 50;
+        }
+        for (const type of ['forward', 'back', 'up', 'down']) {
+            const definition = BlockSpecs.defs[type];
+            if (!definition) continue;
+            const restricted = challenge.movementRules?.allowedTypes?.includes(type);
+            definition[6] = restricted ? Number(challenge.movementRules?.fixedStep || 1) : -20;
+            definition[7] = restricted ? Number(challenge.movementRules?.fixedStep || 1) : 20;
+        }
+        if (BlockSpecs.defs.repeat) {
+            const repeatCount = Number(challenge.repeatCount);
+            const repeatDefault = Number(challenge.repeatDefault);
+            BlockSpecs.defs.repeat[4] = repeatCount > 0 ? repeatCount : (repeatDefault > 0 ? repeatDefault : 4);
+            BlockSpecs.defs.repeat[6] = repeatCount > 0 ? repeatCount : 0;
+            BlockSpecs.defs.repeat[7] = repeatCount > 0 ? repeatCount : 24;
+        }
+        BlockSpecs.palettes = [
+            ['onflag', ...(available.has('message') || needs('sendMessage') ? ['message'] : [])],
+            [...movementBlocks, ...extraMovementBlocks],
+            [...(needs('pickup') ? ['pickup'] : []), ...(needs('drop') ? ['drop'] : []), ...(needs('interact') ? ['interact'] : []), ...(needs('touch') ? ['touch'] : [])],
+            [...(available.has('playsnd') || needs('playSound') ? ['playsnd'] : [])],
+            [...(useRepeat ? ['repeat'] : []), ...(useStoryIf ? ['storyif'] : []), ...(useWait ? ['wait'] : [])],
+            ['endstack']
+        ];
+        const selectors = document.getElementById('selectors');
+        if (selectors) {
+            for (let index = 0; index < BlockSpecs.palettes.length; index++) {
+                const selector = selectors.childNodes[index + 1] as HTMLElement | undefined;
+                if (selector && selector.style) selector.style.display = BlockSpecs.palettes[index].length ? '' : 'none';
+            }
+        }
     }
 
     ///////////////////////////////
@@ -263,8 +341,19 @@ export default class BlockSpecs {
             'message': ['message', sendshapes, BlockSpecs.yellowCmd, 'm', 'Orange',
                 BlockSpecs.yellowCmdH, null, null, BlockSpecs.cmdS],
 
+            'pickup': ['pickup', BlockSpecs.getImageFrom('assets/blockicons/Pickup', 'svg'),
+                BlockSpecs.pinkCmd, null, null, BlockSpecs.pinkCmdH, null, null, BlockSpecs.cmdS],
+            'drop': ['drop', BlockSpecs.getImageFrom('assets/blockicons/Drop', 'svg'),
+                BlockSpecs.pinkCmd, null, null, BlockSpecs.pinkCmdH, null, null, BlockSpecs.cmdS],
+            'interact': ['interact', BlockSpecs.getImageFrom('assets/blockicons/Interact', 'svg'),
+                BlockSpecs.pinkCmd, null, null, BlockSpecs.pinkCmdH, null, null, BlockSpecs.cmdS],
+            'touch': ['touch', BlockSpecs.getImageFrom('assets/blockicons/Bump', 'svg'),
+                BlockSpecs.pinkCmd, null, null, BlockSpecs.pinkCmdH, null, null, BlockSpecs.cmdS],
+
             'repeat': ['repeat', BlockSpecs.getImageFrom('assets/blockicons/Repeat', 'svg'),
                 BlockSpecs.cShape, 'n', 4, BlockSpecs.cShapeH, 0, 24, BlockSpecs.repeatS],
+            'storyif': ['storyif', BlockSpecs.getImageFrom('assets/blockicons/StoryIf', 'svg'),
+                BlockSpecs.cShape, 's', 'Si', BlockSpecs.cShapeH, null, null, BlockSpecs.repeatS],
 
             'forward': ['forward', BlockSpecs.getImageFrom('assets/blockicons/Foward', 'svg'),
                 BlockSpecs.blueCmd, 'n', 1, BlockSpecs.blueCmdH, -20, 20, BlockSpecs.cmdS],
@@ -286,6 +375,10 @@ export default class BlockSpecs {
                 BlockSpecs.blueCmd, null, null, BlockSpecs.blueCmdH, null, null, BlockSpecs.cmdS],
             'hop': ['hop', BlockSpecs.getImageFrom('assets/blockicons/Hop', 'svg'),
                 BlockSpecs.blueCmd, 'n', 2, BlockSpecs.blueCmdH, -15, 15, BlockSpecs.cmdS],
+            'storyjump': ['storyjump', ['StoryJumpForward', 'StoryJumpBack', 'StoryJumpDiagonal'],
+                BlockSpecs.blueCmd, 'm', 'StoryJumpForward', BlockSpecs.blueCmdH, null, null, BlockSpecs.cmdS],
+            'cloudfly': ['cloudfly', ['CloudFlyForward', 'CloudFlyBack', 'CloudFlyUp', 'CloudFlyDown'],
+                BlockSpecs.blueCmd, 'm', 'CloudFlyDown', BlockSpecs.blueCmdH, null, null, BlockSpecs.cmdS],
 
 
             'wait': ['wait', BlockSpecs.getImageFrom('assets/blockicons/Wait', 'svg'),
@@ -357,6 +450,7 @@ export default class BlockSpecs {
                 COLOR: Localization.localize('BLOCK_DESC_MESSAGE_COLOR_ORANGE')
             }),
             'repeat': Localization.localize('BLOCK_DESC_REPEAT'),
+            'storyif': 'Si ya sonaron las tres notas en orden, hace lo de dentro; si no, lo salta.',
             'forward': Localization.localize('BLOCK_DESC_MOVE_RIGHT'),
             'back': Localization.localize('BLOCK_DESC_MOVE_LEFT'),
             'up': Localization.localize('BLOCK_DESC_MOVE_UP'),
@@ -367,6 +461,19 @@ export default class BlockSpecs {
             'right': Localization.localize('BLOCK_DESC_TURN_RIGHT'),
             'flipX': Localization.localize('BLOCK_DESC_FLIP_X'),
             'hop': Localization.localize('BLOCK_DESC_HOP'),
+            'storyjump': (() => {
+                const direction = String(b.getArgValue() || 'StoryJumpForward');
+                if (direction === 'StoryJumpBack') return Localization.localizeWithFallback('STBLOCK_STORY_JUMP_BACK', 'Salta hacia atrás.');
+                if (direction === 'StoryJumpDiagonal') return Localization.localizeWithFallback('STBLOCK_STORY_JUMP_DIAGONAL', 'Salta en diagonal hacia la salida.');
+                return Localization.localizeWithFallback('STBLOCK_STORY_JUMP_FORWARD', 'Salta hacia delante sobre el agua.');
+            })(),
+            'cloudfly': (() => {
+                const direction = String(b.getArgValue() || 'CloudFlyDown');
+                if (direction === 'CloudFlyForward') return 'Mistral vuela dos casillas hacia delante.';
+                if (direction === 'CloudFlyBack') return 'Mistral vuela dos casillas hacia atrás.';
+                if (direction === 'CloudFlyUp') return 'Mistral vuela dos casillas hacia arriba.';
+                return 'Mistral vuela dos casillas hacia abajo.';
+            })(),
             'wait': Localization.localize('BLOCK_DESC_WAIT'),
             'setspeed': Localization.localize('BLOCK_DESC_SET_SPEED'),
             'stopmine': Localization.localize('BLOCK_DESC_STOP', {
@@ -397,7 +504,11 @@ export default class BlockSpecs {
             }),
             'message': Localization.localize('BLOCK_DESC_SEND_MESSAGE', {
                 COLOR: Localization.localize('BLOCK_DESC_MESSAGE_COLOR_ORANGE')
-            })
+            }),
+            'pickup': 'Recoge el objeto o personaje que está en tu casilla. Te seguirá hasta que lo sueltes.',
+            'drop': 'Suelta aquí el objeto o personaje que llevas contigo.',
+            'interact': 'Activa el objeto que está en tu casilla.',
+            'touch': 'Toca el mecanismo que está en tu casilla o justo al lado y lo activa.'
         };
     }
 }

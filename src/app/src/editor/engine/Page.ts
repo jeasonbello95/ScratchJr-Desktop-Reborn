@@ -112,6 +112,10 @@ export default class Page {
         }
     }
 
+    refreshSpriteThumbnails () {
+        enginePorts().thumbsUpdateSprites();
+    }
+
     clearBackground () {
         while (this.bkg.childElementCount > 0) {
             this.bkg.removeChild(this.bkg.childNodes[0]);
@@ -138,6 +142,12 @@ export default class Page {
         var keys = MediaLib.keys as Record<string, unknown>;
         var url = (keys[name]) ? MediaLib.path + name : name;
         var md5 = (keys[name]) ? MediaLib.path + name : name;
+
+        if (/\.(png|jpe?g|webp)(?:[?#].*)?$/i.test(md5)) {
+            this.setBackgroundImage(url, fcn);
+            this.svg = null;
+            return;
+        }
 
         if (md5.substr(md5.length - 3) == 'png') {
             this.setBackgroundImage(url, fcn);
@@ -526,6 +536,9 @@ export default class Page {
         var me = getModelRefAs<Page>(spr.div.parentNode as HTMLElement, 'page')!;
         me.setCurrentSprite(spr);
         me.update(spr);
+        if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+            enginePorts().thumbsUpdateSprites();
+        }
         enginePorts().uiSpriteInView(spr);
         enginePorts().setOnHold(false);
     }
@@ -546,7 +559,7 @@ export default class Page {
         enginePorts().thumbsUpdatePages();
     }
 
-    addSprite (scale: number, md5: string, cname: string) {
+    addSprite (scale: number, md5: string, cname: string, onAdded?: (spr: Sprite) => void) {
         enginePorts().setOnHold(true);
         var sprAttr: Record<string, unknown> = {
             flip: false,
@@ -570,7 +583,10 @@ export default class Page {
         sprAttr.id = getIdFor(cname);
         sprAttr.name = cname;
         sprAttr.md5 = md5;
-        return new Sprite(sprAttr, this.spriteAdded);
+        return new Sprite(sprAttr, (spr: Sprite) => {
+            this.spriteAdded(spr);
+            if (onAdded) onAdded(spr);
+        });
     }
 
     createSprite (data: Record<string, unknown>) {

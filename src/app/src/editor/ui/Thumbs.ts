@@ -35,6 +35,26 @@ export default class Thumbs {
             var page = ScratchJr.stage.pages[i];
             page.num = i + 1;
             th = page.pageThumbnail(pthumbs);
+            const deleteThumb = th.querySelector('.deletethumb') as HTMLElement | null;
+            if (deleteThumb) {
+                const canDeletePage = ScratchJr.stage.pages.length > 1;
+                deleteThumb.classList.toggle('on', canDeletePage);
+                deleteThumb.setAttribute('role', 'button');
+                deleteThumb.setAttribute('aria-label', `Eliminar página ${i + 1}`);
+                deleteThumb.tabIndex = canDeletePage ? 0 : -1;
+                const removePage = (event: Event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (ScratchJr.stage.pages.length <= 1) return;
+                    ScratchJr.clearSelection();
+                    ScratchJr.stage.deletePage(page.id);
+                };
+                deleteThumb.onmousedown = removePage;
+                deleteThumb.ontouchstart = removePage;
+                deleteThumb.onkeydown = (event: KeyboardEvent) => {
+                    if (event.key === 'Enter' || event.key === ' ') removePage(event);
+                };
+            }
             th.setAttribute('role', 'option');
             th.setAttribute('tabindex', '0');
             th.setAttribute('aria-label', 'Page ' + (i + 1));
@@ -440,6 +460,7 @@ export default class Thumbs {
                 continue;
             }
             var th = spr.spriteThumbnail(costumes);
+            Thumbs.addSpriteDeleteButton(spr, th);
             th.setAttribute('role', 'option');
             th.setAttribute('aria-label', spr.name || 'Character');
             if (spr.id == ScratchJr.stage.currentPage.currentSpriteName) {
@@ -466,6 +487,7 @@ export default class Thumbs {
                 return;
             }
             spr.spriteThumbnail(costumes);
+            Thumbs.addSpriteDeleteButton(spr, spr.thumbnail!);
             Thumbs.selectThisSprite(spr);
             UI.resetSpriteLibrary();
         }
@@ -475,10 +497,35 @@ export default class Thumbs {
     //  Sprite Thumbnails
     ////////////////////////////////////////////
 
+    static addSpriteDeleteButton (spr: Sprite, thumb: HTMLElement) {
+        var deleteThumb = thumb.querySelector('.deletespritethumb') as HTMLElement | null;
+        if (!deleteThumb) {
+            deleteThumb = newHTML('div', 'deletespritethumb', thumb);
+        }
+        deleteThumb.id = `deletespritethumb-${spr.id}`;
+        deleteThumb.setAttribute('role', 'button');
+        deleteThumb.setAttribute('aria-label', `Eliminar personaje ${spr.name || ''}`.trim());
+        deleteThumb.title = 'Eliminar personaje';
+        deleteThumb.tabIndex = 0;
+        const removeSprite = (event: Event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!ScratchJr.isEditable()) return;
+            ScratchJr.clearSelection();
+            ScratchJr.stage.removeSprite(spr);
+        };
+        deleteThumb.onmousedown = removeSprite;
+        deleteThumb.ontouchstart = removeSprite;
+        deleteThumb.onkeydown = (event: KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') removeSprite(event);
+        };
+    }
+
     static startDragThumb (e: MouseEvent, tb: HTMLElement) {
-        if (ScratchJr.shaking && ((e.target as HTMLElement).id == 'deletespritethumb')) {
+        if ((e.target as HTMLElement).classList.contains('deletespritethumb')) {
             ScratchJr.clearSelection();
             ScratchJr.stage.removeSprite(getModelRefAs<Sprite>(gn(getModelRefAs<string>(tb, 'spritethumb')!) as HTMLElement, 'sprite')!);
+            return;
         }
         if (ScratchJr.shaking) {
             ScratchJr.clearSelection();
@@ -498,8 +545,10 @@ export default class Thumbs {
         ScratchJr.stopShaking = Thumbs.stopCharShaking;
         var cc = tb.getAttribute('class')!;
         tb.setAttribute('class', cc + ' shakethumb');
-        var close = newHTML('div', 'deletespritethumb', tb);
-        close.id = 'deletespritethumb';
+        if (!tb.querySelector('.deletespritethumb')) {
+            var close = newHTML('div', 'deletespritethumb', tb);
+            close.id = `deletespritethumb-${getModelRefAs<string>(tb, 'spritethumb')!}`;
+        }
     }
 
     static stopCharShaking (b: HTMLElement) {
@@ -508,10 +557,6 @@ export default class Thumbs {
         var cc = b.getAttribute('class')!;
         cc = cc.substr(0, cc.length - 8);
         b.setAttribute('class', cc);
-        var ic = b.childNodes[b.childElementCount - 1];
-        if ((ic as HTMLElement).getAttribute('class') == 'deletespritethumb') {
-            b.removeChild(ic);
-        }
     }
 
     static selectThisSprite (spr: Sprite) {

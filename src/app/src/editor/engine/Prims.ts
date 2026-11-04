@@ -33,6 +33,7 @@ export default class Prims {
             ontouchcolor: Prims.OnTouchColor,
             onchat: Prims.Ignore,
             repeat: Prims.Repeat,
+            storyif: Prims.StoryIf,
             forward: Prims.Forward,
             back: Prims.Back,
             up: Prims.Up,
@@ -49,6 +50,10 @@ export default class Prims {
             smaller: Prims.Smaller,
             wait: Prims.Wait,
             waitrandom: Prims.WaitRandom,
+            pickup: Prims.Pickup,
+            drop: Prims.DropObject,
+            interact: Prims.Interact,
+            touch: Prims.Touch,
             caretcmd: Prims.Ignore,
             caretstart: Prims.Ignore,
             caretend: Prims.Ignore,
@@ -60,6 +65,8 @@ export default class Prims {
             stopmine: Prims.StopMine,
             forever: Prims.Forever,
             hop: Prims.Hop,
+            storyjump: Prims.StoryJump,
+            cloudfly: Prims.CloudFly,
             show: Prims.Show,
             hide: Prims.Hide,
             playsnd: Prims.playSound,
@@ -82,6 +89,31 @@ export default class Prims {
     static setTime (strip: Thread) {
         strip.time = Date.now();
     }
+    static recordStoryBlock (opcode: string) {
+        if (window.sessionStorage.getItem('stblockKidsMode') !== 'story') return;
+        const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {recordBlock?: (name: string) => unknown}}).STBLOCK_KIDS_STORY;
+        storyApi?.recordBlock?.(opcode);
+    }
+    static storyAction (strip: Thread, action: string) {
+        Prims.recordStoryBlock(action);
+        const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {performAction?: (name: string, actorName?: string, position?: {x: number; y: number}, context?: {insideIf?: boolean}) => unknown}}).STBLOCK_KIDS_STORY;
+        const insideIf = Array.isArray(strip.stack) && strip.stack.some(block => block.blocktype === 'storyif');
+        storyApi?.performAction?.(action, strip.spr.name, {x: strip.spr.xcoor, y: strip.spr.ycoor}, {insideIf});
+        strip.thisblock = strip.thisblock.next!;
+        strip.waitTimer = tinterval * 2;
+    }
+    static Pickup (strip: Thread) {
+        Prims.storyAction(strip, 'pickup');
+    }
+    static DropObject (strip: Thread) {
+        Prims.storyAction(strip, 'drop');
+    }
+    static Interact (strip: Thread) {
+        Prims.storyAction(strip, 'interact');
+    }
+    static Touch (strip: Thread) {
+        Prims.storyAction(strip, 'touch');
+    }
     static showTime (strip?: Thread) {
         //var time = ((new Date()) - strip.time) / 1000;
         // 	ScratchJr.log (strip.thisblock.blocktype, time, "sec") ;
@@ -91,7 +123,19 @@ export default class Prims {
         strip.thisblock = strip.thisblock.next!;
     }
     static StopAll () {
+        Prims.sendRobotCommand('stop', '', 0);
         enginePorts().stopStrips();
+    }
+    static sendRobotCommand (action: string, direction: string, steps: number) {
+        if (window.parent === window || document.body.dataset.stblockKidsMode !== 'robot') {
+            return;
+        }
+        window.parent.postMessage({
+            type: 'STBLOCK_KIDS_ROBOT_COMMAND',
+            action: action,
+            direction: direction,
+            steps: steps
+        }, window.location.origin);
     }
     static StopMine (strip: Thread) {
         var spr = strip.spr;
@@ -109,9 +153,23 @@ export default class Prims {
         var name = b.getSoundName(strip.spr.sounds) as string;
         //	console.log ('playSound', name);
         if (!strip.audio) {
+            const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {recordAction?: (action: Record<string, unknown>) => unknown}}).STBLOCK_KIDS_STORY;
+            const insideIf = Array.isArray(strip.stack) && strip.stack.some(block => block.blocktype === 'storyif');
+            const inRepeat = Array.isArray(strip.stack) && strip.stack.some(block => block.blocktype === 'repeat');
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story') storyApi?.recordAction?.({type: 'playSound', soundName: name, actorName: strip.spr.name, insideIf, inRepeat, success: true});
             var snd = (ScratchAudio.projectSounds as Record<string, Sound>)[name];
             if (!snd) {
                 strip.thisblock = strip.thisblock.next!;
+                return;
+            }
+            Prims.recordStoryBlock('playsnd');
+            const storyConfig = (window as Window & {STBLOCK_KIDS_STORY_CONFIG?: {level?: number}}).STBLOCK_KIDS_STORY_CONFIG;
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story' && Number(storyConfig?.level) === 14) {
+                // Let the note play asynchronously so a browser audio completion callback
+                // cannot hold the script in a locked, uneditable running state.
+                snd.play();
+                strip.thisblock = strip.thisblock.next!;
+                strip.waitTimer = tinterval * 4;
                 return;
             }
             strip.audio = snd;
@@ -207,6 +265,11 @@ export default class Prims {
             n = 1;
         }
         if (b.repeatCounter! < 0) {
+            Prims.recordStoryBlock('repeat');
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+                const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {recordAction?: (action: Record<string, unknown>) => unknown}}).STBLOCK_KIDS_STORY;
+                storyApi?.recordAction?.({type: 'repeat', count: n, success: true});
+            }
             b.repeatCounter = n;
         }
         if (b.repeatCounter == 0) {
@@ -220,12 +283,44 @@ export default class Prims {
             enginePorts().getRuntime().yield = true;
         }
     }
+    static StoryIf (strip: Thread) {
+        const block = strip.thisblock as typeof strip.thisblock & {storyIfRunning?: boolean; inside?: typeof strip.thisblock};
+        if (block.storyIfRunning) {
+            block.storyIfRunning = false;
+            strip.thisblock = block.next!;
+            return;
+        }
+        Prims.recordStoryBlock('storyif');
+        const condition = String(block.getArgValue() || 'StoryIfMelodyReady');
+        const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {
+            evaluateCondition?: (condition: string) => boolean;
+            recordAction?: (action: Record<string, unknown>) => unknown;
+        }}).STBLOCK_KIDS_STORY;
+        const result = storyApi?.evaluateCondition?.(condition) === true;
+        const insideIf = Array.isArray(strip.stack) && strip.stack.some(parent => parent.blocktype === 'storyif');
+        // Normalize the Si token so each level's evaluator can match it consistently.
+        const normalizedCondition = ['Si', 'StoryIf', 'StoryIfMelodyReady', 'melody-ready'].includes(condition) ? 'Si' : condition;
+        storyApi?.recordAction?.({type: 'condition', condition: normalizedCondition, result, actorName: strip.spr.name, insideIf, success: true});
+        if (!result || !block.inside) {
+            strip.thisblock = block.next!;
+            return;
+        }
+        block.storyIfRunning = true;
+        strip.stack.push(block);
+        strip.thisblock = block.inside;
+        enginePorts().getRuntime().yield = true;
+    }
     static Ignore (strip: Thread) {
         strip.thisblock = strip.thisblock.next!;
     }
     static Wait (strip: Thread) {
+        Prims.recordStoryBlock('wait');
         var n = Number(strip.thisblock.getArgValue());
-        strip.waitTimer = Math.round(n * 3.125); // thenth of a second
+        const storyConfig = (window as Window & {STBLOCK_KIDS_STORY_CONFIG?: {level?: number}}).STBLOCK_KIDS_STORY_CONFIG;
+        const secondsMode = window.sessionStorage.getItem('stblockKidsMode') === 'story' && (storyConfig?.level === 7 || storyConfig?.level === 8);
+        const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {recordAction?: (action: Record<string, unknown>) => unknown}}).STBLOCK_KIDS_STORY;
+        if (window.sessionStorage.getItem('stblockKidsMode') === 'story') storyApi?.recordAction?.({type: 'wait', duration: n, inRepeat: Array.isArray(strip.stack) && strip.stack.some(block => block.blocktype === 'repeat'), success: true});
+        strip.waitTimer = Math.round(n * (secondsMode ? 31.25 : 3.125)); // Mundos 7 y 8 usan segundos; otros mundos conservan décimas.
         Prims.setTime(strip);
         strip.thisblock = strip.thisblock.next!;
     }
@@ -304,6 +399,92 @@ export default class Prims {
         }
         Prims.hopTo(strip);
     }
+    static StoryJump (strip: Thread) {
+        Prims.arcMove(strip, 'storyjump');
+    }
+    static CloudFly (strip: Thread) {
+        Prims.arcMove(strip, 'cloudfly');
+    }
+    static arcMove (strip: Thread, blockType: 'storyjump' | 'cloudfly') {
+        const s = strip.spr;
+        const storyConfig = (window as Window & {STBLOCK_KIDS_STORY_CONFIG?: {level?: number; columns?: number; rows?: number; stepX?: number; stepY?: number; originX?: number; originY?: number}}).STBLOCK_KIDS_STORY_CONFIG;
+        const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {
+            canMoveTo?: (position: unknown, actorName?: string) => boolean;
+            notifyRuleViolation?: (message: unknown) => boolean;
+            recordAction?: (action: Record<string, unknown>) => unknown;
+            recordJumpPosition?: (position: unknown, actorName?: string) => unknown;
+        }}).STBLOCK_KIDS_STORY;
+        if (window.sessionStorage.getItem('stblockKidsMode') !== 'story' || !storyConfig) {
+            Prims.Hop(strip);
+            return;
+        }
+        let animation = strip.storyJumpAnimation;
+        if (!animation) {
+            const defaultDirection = blockType === 'cloudfly' ? 'CloudFlyDown' : 'StoryJumpForward';
+            const direction = String(strip.thisblock.getArgValue() || defaultDirection);
+            const deltas: Record<string, {x: number; y: number}> = blockType === 'cloudfly' ? {
+                CloudFlyForward: {x: 2, y: 0}, CloudFlyBack: {x: -2, y: 0}, CloudFlyUp: {x: 0, y: -2}, CloudFlyDown: {x: 0, y: 2}
+            } : {
+                StoryJumpForward: {x: 2, y: 0}, StoryJumpBack: {x: -2, y: 0}, StoryJumpDiagonal: {x: 2, y: -1}
+            };
+            if (blockType === 'storyjump' && Number(storyConfig.level) === 13) {
+                deltas.StoryJumpDiagonal = {x: 1, y: -1};
+            }
+            const delta = deltas[direction];
+            if (!delta) {
+                storyApi?.notifyRuleViolation?.('Elige una dirección para el salto.');
+                enginePorts().stopStrips();
+                return;
+            }
+            const stepX = Number(storyConfig.stepX) || 120;
+            const stepY = Number(storyConfig.stepY) || 90;
+            const originX = Number.isFinite(Number(storyConfig.originX)) ? Number(storyConfig.originX) : stepX / 2;
+            const originY = Number.isFinite(Number(storyConfig.originY)) ? Number(storyConfig.originY) : stepY / 2;
+            const fromCell = {x: Math.round((s.xcoor - originX) / stepX) + 1, y: Math.round((s.ycoor - originY) / stepY) + 1};
+            const toCell = {x: fromCell.x + delta.x, y: fromCell.y + delta.y};
+            if (toCell.x < 1 || toCell.x > Number(storyConfig.columns || 30) || toCell.y < 1 || toCell.y > Number(storyConfig.rows || 30)) {
+                storyApi?.notifyRuleViolation?.('Ese salto sale del mapa. Elige otra dirección.');
+                enginePorts().stopStrips();
+                return;
+            }
+            const toX = originX + (toCell.x - 1) * stepX;
+            const toY = originY + (toCell.y - 1) * stepY;
+            if (storyApi?.canMoveTo?.({x: toX, y: toY}, s.name) === false) {
+                enginePorts().stopStrips();
+                return;
+            }
+            Prims.recordStoryBlock(blockType);
+            animation = {
+                fromX: s.xcoor,
+                fromY: s.ycoor,
+                toX,
+                toY,
+                frame: 0,
+                frames: 14,
+                direction,
+                fromCell,
+                toCell
+            };
+            strip.storyJumpAnimation = animation;
+            Prims.setTime(strip);
+        }
+        animation.frame += 1;
+        const progress = animation.frame / animation.frames;
+        const arcHeight = 46 * Math.sin(Math.PI * progress);
+        s.setPos(
+            animation.fromX + (animation.toX - animation.fromX) * progress,
+            animation.fromY + (animation.toY - animation.fromY) * progress - arcHeight
+        );
+        strip.waitTimer = tinterval + Math.floor(2 ** (2 - Math.floor(s.speed / 2)) / 2); // eslint-disable-line no-restricted-properties
+        if (animation.frame < animation.frames) return;
+        s.setPos(animation.toX, animation.toY);
+        storyApi?.recordAction?.({type: blockType, direction: animation.direction, from: animation.fromCell, to: animation.toCell, cell: animation.toCell, actorName: s.name, success: true});
+        storyApi?.recordJumpPosition?.({x: s.xcoor, y: s.ycoor}, s.name);
+        strip.storyJumpAnimation = null;
+        strip.count = -1;
+        strip.thisblock = strip.thisblock.next!;
+        Prims.showTime(strip);
+    }
     static hopTo (strip: Thread) {
         var s = strip.spr;
         var b = strip.thisblock;
@@ -337,7 +518,18 @@ export default class Prims {
     }
     static moveInDirection (strip: Thread, vec: {x: number; y: number}, flip?: 'forward' | 'back') {
         var s = strip.spr;
-        var num = Number(strip.thisblock.getArgValue()) * 24;
+        const storyConfig = (window as Window & {STBLOCK_KIDS_STORY_CONFIG?: {stepX?: number; stepY?: number; movePixelsX?: number; movePixelsY?: number}}).STBLOCK_KIDS_STORY_CONFIG;
+        const storyMode = window.sessionStorage.getItem('stblockKidsMode') === 'story' && storyConfig;
+        if (storyMode && strip.distance < 0) {
+            const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {recordMovementExecution?: (...args: unknown[]) => boolean}}).STBLOCK_KIDS_STORY;
+            const inRepeat = Array.isArray(strip.stack) && strip.stack.some(block => block.blocktype === 'repeat');
+            if (storyApi?.recordMovementExecution?.(strip.thisblock, strip.thisblock.blocktype, strip.thisblock.getArgValue(), inRepeat) === false) {
+                enginePorts().stopStrips();
+                return;
+            }
+        }
+        const cellPixels = vec.x !== 0 ? Number(storyConfig && (storyConfig.movePixelsX || storyConfig.stepX)) : Number(storyConfig && (storyConfig.movePixelsY || storyConfig.stepY));
+        var num = storyMode && cellPixels > 0 ? Number(strip.thisblock.getArgValue()) * cellPixels / 2 : Number(strip.thisblock.getArgValue()) * 24;
         var distance = Math.abs(num);
         if (flip === 'forward' && s.flip) {
             s.flip = false;
@@ -354,6 +546,13 @@ export default class Prims {
             return;
         }
         if (strip.distance < 0) {
+            Prims.recordStoryBlock(strip.thisblock.blocktype || '');
+            const signedSteps = Number(strip.thisblock.getArgValue());
+            const movingForward = (flip === 'forward' && signedSteps >= 0) || (flip === 'back' && signedSteps < 0);
+            const robotDirection = flip ? (movingForward ? 'forward' : 'backward') : '';
+            if (robotDirection && Math.abs(signedSteps) > 0) {
+                Prims.sendRobotCommand('move', robotDirection, Math.abs(signedSteps));
+            }
             strip.distance = distance;
             strip.vector = vec;
             Prims.setTime(strip);
@@ -380,7 +579,20 @@ export default class Prims {
         distance -= Math.abs(Vector.len(vector));
         if (distance < 0) {
             vector = Vector.scale(strip.vector, strip.distance);
-            s.setPos(s.xcoor + vector.x, s.ycoor + vector.y);
+            const nextX = s.xcoor + vector.x;
+            const nextY = s.ycoor + vector.y;
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+                const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {canMoveTo?: (position: unknown, actorName?: string) => boolean}}).STBLOCK_KIDS_STORY;
+                if (storyApi?.canMoveTo?.({x: nextX, y: nextY}, s.name) === false) {
+                    enginePorts().stopStrips();
+                    return;
+                }
+            }
+            s.setPos(nextX, nextY);
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+                const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {recordPosition?: (position: unknown, actorName?: string) => unknown}}).STBLOCK_KIDS_STORY;
+                storyApi?.recordPosition?.({x: s.xcoor, y: s.ycoor}, s.name);
+            }
             strip.distance = -1;
             strip.vector = {
                 x: 0,
@@ -389,7 +601,16 @@ export default class Prims {
             Prims.showTime(strip);
             strip.thisblock = strip.thisblock.next!;
         } else {
-            s.setPos(s.xcoor + vector.x, s.ycoor + vector.y);
+            const nextX = s.xcoor + vector.x;
+            const nextY = s.ycoor + vector.y;
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+                const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {canMoveTo?: (position: unknown, actorName?: string) => boolean}}).STBLOCK_KIDS_STORY;
+                if (storyApi?.canMoveTo?.({x: nextX, y: nextY}, s.name) === false) {
+                    enginePorts().stopStrips();
+                    return;
+                }
+            }
+            s.setPos(nextX, nextY);
             strip.waitTimer = tinterval;
             strip.distance = distance;
         }
@@ -398,6 +619,12 @@ export default class Prims {
         var s = strip.spr;
         var num = Number(strip.thisblock.getArgValue()) * 30;
         if (strip.count < 0) {
+            const signedTurnSteps = Number(strip.thisblock.getArgValue());
+            const turnSteps = Math.abs(signedTurnSteps);
+            if (turnSteps > 0) {
+                const turnsRight = direction * signedTurnSteps > 0;
+                Prims.sendRobotCommand('turn', turnsRight ? 'right' : 'left', turnSteps);
+            }
             strip.count = Math.floor(Math.abs(num) / s.speed * 0.25);
             strip.angleStep = direction * s.speed * 4 * Math.abs(num) / num;
             strip.finalAngle = s.angle + direction * num;
@@ -590,6 +817,7 @@ export default class Prims {
         var b = strip.thisblock;
         var pair;
         if (strip.firstTime) {
+            Prims.recordStoryBlock('message');
             var receivers: Array<[Sprite, BlockLike]> = [];
             var msg = b.getArgValue();
             var findReceivers = function (block: BlockLike, s: Sprite) {
@@ -598,6 +826,9 @@ export default class Prims {
                 }
             };
             Prims.applyToAllStrips(['onmessage'], findReceivers);
+            const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {recordAction?: (action: Record<string, unknown>) => unknown; canReceiveMessage?: (value: string) => boolean}}).STBLOCK_KIDS_STORY;
+            const storyReceiver = window.sessionStorage.getItem('stblockKidsMode') === 'story' && storyApi?.canReceiveMessage?.(String(msg || ''));
+            if (window.sessionStorage.getItem('stblockKidsMode') === 'story') storyApi?.recordAction?.({type: 'sendMessage', value: String(msg || ''), success: receivers.length > 0 || storyReceiver === true});
             var newthreads: Thread[] = [];
             for (var i = 0; i < receivers.length; i++) {
                 pair = receivers[i];

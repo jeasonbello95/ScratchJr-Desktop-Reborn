@@ -14,10 +14,15 @@ import type {EncodedStrip} from '../ui/Project';
 const namedForms = document.forms as unknown as {
     activetextbox: HTMLFormElement & { typing: HTMLInputElement };
 };
+let storySerialOnFlagTimer: number | null = null;
 import {newHTML, newDiv, gn,
     getIdFor, setProps,
     scaleMultiplier, setCanvasSize,
     globaly, globalx} from '../../utils/lib';
+
+const isStblockStoryMode = () => window.sessionStorage.getItem('stblockKidsMode') === 'story'
+    || document.body?.dataset.stblockKidsMode === 'story'
+    || (window as Window & {STBLOCK_KIDS_MODE?: string}).STBLOCK_KIDS_MODE === 'story';
 
 export default class Stage {
     currentPage: Page;
@@ -153,6 +158,12 @@ export default class Stage {
     loadPageThreads () {
         enginePorts().blur();
         var page = this.currentPage;
+        if (storySerialOnFlagTimer !== null) window.clearInterval(storySerialOnFlagTimer);
+        storySerialOnFlagTimer = null;
+        const serialMultiActorWorld = isStblockStoryMode() && [11, 12, 15, 16, 17, 19, 20].includes(Number((window as Window & {STBLOCK_KIDS_STORY_CONFIG?: {level?: number}}).STBLOCK_KIDS_STORY_CONFIG?.level));
+        // Each character waits for the previous one: STBlock -> Mistral -> Vega.
+        const stageNames = ['STBlock', 'Mistral', 'Vega'];
+        const stageFlags: Array<Array<{sprite: Sprite; block: Block}>> = stageNames.map(() => []);
         for (var i = 0; i < page.div.childElementCount; i++) {
             var spr = getModelRefAs<Sprite>(page.div.childNodes[i] as HTMLElement, 'sprite')!;
             if (!spr) {
@@ -167,8 +178,42 @@ export default class Stage {
             var topblocks = scriptsOwner.getBlocksType(['onflag', 'ontouch', 'ontouchcolor', 'ontouchsprite']);
             for (var j = 0; j < topblocks.length; j++) {
                 var b = topblocks[j];
-                enginePorts().getRuntime().addRunScript(spr, b);
+                if (serialMultiActorWorld && b.blocktype === 'onflag') {
+                    const stageIndex = stageNames.indexOf(spr.name);
+                    if (stageIndex >= 0) stageFlags[stageIndex].push({sprite: spr, block: b});
+                } else {
+                    enginePorts().getRuntime().addRunScript(spr, b);
+                }
             }
+        }
+        if (serialMultiActorWorld) {
+            let stageIndex = -1;
+            const advanceStage = () => {
+                stageIndex += 1;
+                while (stageIndex < stageFlags.length && stageFlags[stageIndex].length === 0) stageIndex += 1;
+                if (stageIndex >= stageFlags.length) return false;
+                for (const entry of stageFlags[stageIndex]) enginePorts().getRuntime().addRunScript(entry.sprite, entry.block);
+                return true;
+            };
+            if (!advanceStage()) return;
+            storySerialOnFlagTimer = window.setInterval(() => {
+                const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {getRunTelemetry?: () => {blockedCell?: unknown; ruleViolation?: string}}}).STBLOCK_KIDS_STORY;
+                const telemetry = storyApi?.getRunTelemetry?.();
+                if (telemetry?.blockedCell || telemetry?.ruleViolation) {
+                    if (storySerialOnFlagTimer !== null) window.clearInterval(storySerialOnFlagTimer);
+                    storySerialOnFlagTimer = null;
+                    return;
+                }
+                const currentName = stageNames[stageIndex];
+                const currentStillRunning = enginePorts().getRuntime().threadsRunning.some(thread =>
+                    thread.isRunning && thread.firstBlock.blocktype === 'onflag' && thread.spr.name === currentName
+                );
+                if (currentStillRunning) return;
+                if (!advanceStage()) {
+                    if (storySerialOnFlagTimer !== null) window.clearInterval(storySerialOnFlagTimer);
+                    storySerialOnFlagTimer = null;
+                }
+            }, 100);
         }
     }
 
@@ -352,12 +397,28 @@ export default class Stage {
         const targetEl = e.target as HTMLElement;
         var target = (targetEl.nodeName == 'CANVAS') ? this.checkShaking(pt, targetEl) : targetEl;
         const shaking = enginePorts().getShaking();
+        if (isStblockStoryMode() && (target.id === 'deletesprite' || this.hasSpriteTarget(targetEl))) {
+            e.preventDefault();
+            enginePorts().clearSelection();
+            Events.clearEvents();
+            Events.dragged = false;
+            Events.dragthumbnail = null;
+            return;
+        }
         if (shaking && (target.id == 'deletesprite')) {
             this.removeSprite(getModelRefAs<Sprite>(shaking as HTMLElement, 'sprite')!);
             return;
         }
         ctx.clearRect(0, 0, 480, 360);
         var hitobj = this.whoIsIt(ctx, pt);
+        if (isStblockStoryMode() && hitobj) {
+            e.preventDefault();
+            enginePorts().clearSelection();
+            Events.clearEvents();
+            Events.dragged = false;
+            Events.dragthumbnail = null;
+            return;
+        }
         if (shaking && hitobj && (hitobj.id == shaking.id)) { // check grid case
             var sprname = shaking.id;
             const sprnameOwner = getModelRefAs<Sprite>(gn(sprname) as HTMLElement, 'sprite')!;
@@ -396,10 +457,19 @@ export default class Stage {
         };
         Events.dragthumbnail = spr.div;
         Events.clearEvents();
-        if (!enginePorts().isInFullscreen() && enginePorts().isEditable()) {
+        if (!isStblockStoryMode() && !enginePorts().isInFullscreen() && enginePorts().isEditable()) {
             Events.holdit(spr.div, this.startShaking);
         }
         this.setEvents();
+    }
+
+    hasSpriteTarget (target: HTMLElement | null) {
+        let current = target;
+        while (current && current !== this.div) {
+            if (getModelRefAs<Sprite>(current, 'sprite')) return true;
+            current = current.parentElement;
+        }
+        return false;
     }
 
     whoIsIt (ctx: CanvasRenderingContext2D, pt: {x: number; y: number}): Sprite | undefined {
@@ -511,6 +581,9 @@ export default class Stage {
     }
 
     mouseMove (e: MouseEvent) {
+        if (isStblockStoryMode()) {
+            return;
+        }
         if (!Events.dragthumbnail) {
             return;
         }

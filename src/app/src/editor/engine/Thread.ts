@@ -19,6 +19,18 @@ export interface BlockLike {
     findFirst(): BlockLike;
 }
 
+interface StoryJumpAnimation {
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    frame: number;
+    frames: number;
+    direction: string;
+    fromCell: {x: number; y: number};
+    toCell: {x: number; y: number};
+}
+
 export default class Thread {
     // Instance state assigned by the constructor and step loop
     firstBlock: BlockLike;
@@ -35,6 +47,7 @@ export default class Thread {
     vector: { x: number; y: number };
     isRunning: boolean;
     time: number;
+    storyJumpAnimation: StoryJumpAnimation | null;
     angleStep!: number;
     finalAngle!: number;
     constructor (s: Sprite, block: BlockLike) {
@@ -55,6 +68,7 @@ export default class Thread {
         };
         this.isRunning = true;
         this.time = 0; // for debugging purposes
+        this.storyJumpAnimation = null;
         return this;
     }
 
@@ -68,6 +82,7 @@ export default class Thread {
             y: 0
         };
         this.distance = -1;
+        this.storyJumpAnimation = null;
         this.called = [];
         this.thisblock = this.firstBlock;
     }
@@ -87,6 +102,7 @@ export default class Thread {
         };
         thread.waitTimer = 0;
         thread.distance = -1;
+        thread.storyJumpAnimation = this.storyJumpAnimation ? {...this.storyJumpAnimation, fromCell: {...this.storyJumpAnimation.fromCell}, toCell: {...this.storyJumpAnimation.toCell}} : null;
         thread.called = this.called;
         thread.isRunning = this.isRunning;
         return thread;

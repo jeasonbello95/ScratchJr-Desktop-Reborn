@@ -426,3 +426,81 @@ body:not([data-theme="classic"]) .exportbtn:active {
 body:not([data-theme="classic"]) .projectthumb.is-managing .aproject {
     animation: sjr-card-wiggle 240ms infinite ease-in-out;
 }
+
+/* Make the project lobby usable on touch phones; the desktop sizing above is
+   based on viewport height and otherwise creates an 800px wide scroll strip. */
+@media (max-width: 700px) {
+    .htmlcontents.home {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 86px 14px max(24px, env(safe-area-inset-bottom));
+        overflow: auto;
+    }
+    .htmlcontents.home .inner {
+        width: 100%;
+        margin: 0 auto;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    .htmlcontents.home .scrollarea {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+        gap: 14px 12px;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+    .htmlcontents.home .projectthumb {
+        display: block;
+        width: 100%;
+        height: auto;
+        min-width: 0;
+        margin: 0;
+        box-sizing: border-box;
+    }
+    .htmlcontents.home .aproject {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1.34;
+        border-radius: 16px;
+    }
+    .htmlcontents.home .aproject img,
+    .htmlcontents.home .aproject.open::after {
+        top: 9%;
+        left: 4%;
+        width: 92%;
+        height: 78%;
+        object-fit: contain;
+    }
+    .htmlcontents.home .aproject.open::after { background-size: 36px; }
+    .htmlcontents.home .projecttitle {
+        width: 100%;
+        height: auto;
+        min-height: 30px;
+        padding: 6px 3px 0;
+        box-sizing: border-box;
+    }
+    .htmlcontents.home .projecttitle h4 {
+        width: 100%;
+        font-size: 14px;
+        line-height: 1.2;
+    }
+    .htmlcontents.home .projectthumb#newproject .aproject,
+    .htmlcontents.home .projectthumb#openproject .aproject { min-height: 112px; }
+    .htmlcontents.home .projectthumb .closex { top: 2px; right: 2px; width: 34px; height: 34px; }
+    .htmlcontents.home .projectthumb .duplicatebtn,
+    .htmlcontents.home .projectthumb .exportbtn { min-width: 34px; min-height: 34px; }
+}
+
+@media (max-width: 360px) {
+    .htmlcontents.home .scrollarea { gap: 10px 8px; }
+    .htmlcontents.home .projecttitle h4 { font-size: 12px; }
+    .htmlcontents.home .projectthumb#newproject .aproject,
+    .htmlcontents.home .projectthumb#openproject .aproject { min-height: 94px; }
+}
+
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 560px) {
+    .htmlcontents.home { padding-top: 64px; }
+    .htmlcontents.home .scrollarea { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

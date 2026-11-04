@@ -75,7 +75,15 @@ export default class Lobby {
             }
         });
         bindTab('geartab', function () {
-            if (gn('geartab')!.className != 'gear on') {
+            // In the Kids lobby the lock stays visible on the settings page;
+            // pressing it again is the simple way back to the project list.
+            if (document.documentElement.dataset.stblockKids === 'true' && gn('geartab')!.className === 'gear on') {
+                gn('geartab')!.setAttribute('aria-label', 'Configuración para adultos');
+                Lobby.setPage('home');
+            } else if (gn('geartab')!.className != 'gear on') {
+                if (document.documentElement.dataset.stblockKids === 'true') {
+                    gn('geartab')!.setAttribute('aria-label', 'Volver a Mis proyectos');
+                }
                 Lobby.setPage('gear');
             }
         });

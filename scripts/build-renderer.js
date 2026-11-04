@@ -16,10 +16,11 @@ const isWatch = process.argv.includes('--watch');
 const options = {
     entryPoints: [path.resolve(__dirname, '..', 'src', 'app', 'renderer-entry.js')],
     outdir: path.resolve(__dirname, '..', 'src', 'app', 'dist'),
-    // HTML pages load dist/app.bundle.js; page chunks + shared chunks land
-    // alongside it via code splitting (appEntry.js uses dynamic imports).
+    // HTML pages load dist/app.bundle.js. Keep the embedded build in one file:
+    // replacing hashed chunks during development can leave an open iframe with
+    // an old app bundle that requests chunk files no longer present on disk.
     entryNames: 'app.bundle',
-    splitting: true,
+    splitting: false,
     bundle: true,
     format: 'esm',
     platform: 'browser',

@@ -797,3 +797,175 @@ body:not([data-theme="classic"]) #footer ul.footer-nav .tab2 > span {
     font-weight: 600;
 }
 
+.stblock-delete-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    background: rgba(22, 47, 35, 0.58);
+}
+
+.stblock-delete-confirm {
+    width: min(460px, 100%);
+    padding: 30px;
+    box-sizing: border-box;
+    border: 3px solid #d8f0df;
+    border-radius: 24px;
+    background: #fff;
+    color: #28583b;
+    font-family: "Nunito", "Trebuchet MS", sans-serif;
+    box-shadow: 0 16px 48px rgba(13, 48, 27, 0.28);
+}
+
+.stblock-delete-confirm h2 {
+    margin: 0 0 10px;
+    color: #247641;
+    font-size: 26px;
+    font-weight: 900;
+}
+
+.stblock-delete-confirm p {
+    margin: 0 0 24px;
+    color: #526b5a;
+    font-size: 18px;
+    line-height: 1.45;
+}
+
+.stblock-delete-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.stblock-delete-confirm-actions button {
+    min-width: 110px;
+    min-height: 48px;
+    padding: 8px 18px;
+    border: 0;
+    border-radius: 15px;
+    font: 800 16px "Nunito", "Trebuchet MS", sans-serif;
+    cursor: pointer;
+}
+
+.stblock-delete-cancel {
+    background: #edf5ef;
+    color: #355e42;
+}
+
+.stblock-delete-action {
+    background: #df4949;
+    color: #fff;
+    box-shadow: 0 3px 0 #b83131;
+}
+
+.stblock-delete-confirm-actions button:focus-visible {
+    outline: 3px solid #49a968;
+    outline-offset: 3px;
+}
+
+#topbar.kids-lobby-hidden {
+    display: none !important;
+}
+
+:root[data-stblock-kids="true"] .topsection {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin: 0.0214px auto 0;
+    height: 0;
+    border: 0;
+    display: block;
+    z-index: 11000;
+}
+
+:root[data-stblock-kids="true"] .topsection.home > div.tabtitle {
+    height: 52.6684px;
+    margin: 0;
+    padding: 15px;
+    padding-left: 2%;
+    line-height: 48.6684px;
+    vertical-align: top;
+}
+
+:root[data-stblock-kids="true"] .topsection.home > div.tabtitle,
+body[data-stblock-kids="true"] .topsection.home > div.tabtitle {
+    background: #18a853;
+    color: var(--sjr-text-inverse);
+    text-shadow: 0 2px 0 #4e3618;
+    border-bottom: 3.5px solid #ffebd1;
+    border-radius: 0 0 var(--sjr-radius-md) var(--sjr-radius-md);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+ul#settings.reference.kids-lobby-lock {
+    position: fixed !important;
+    top: 14px !important;
+    right: 14px !important;
+    z-index: 12000;
+    display: block;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    float: none;
+}
+
+ul#settings.kids-lobby-lock #geartab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin: 0;
+    padding: 0;
+    border: 2px solid #c4e8cc;
+    border-radius: 15px;
+    background: #fff;
+    box-shadow: 0 3px 9px rgba(28, 88, 48, 0.2);
+    cursor: pointer;
+}
+
+ul#settings.kids-lobby-lock #geartab .gear-icon {
+    display: none !important;
+}
+
+ul#settings.kids-lobby-lock #geartab::before {
+    content: "🔒";
+    font-size: 25px;
+    line-height: 1;
+}
+
+ul#settings.kids-lobby-lock #geartab.gear.on::before {
+    content: "↩️";
+}
+
+ul#settings.kids-lobby-lock #geartab:hover {
+    background: #eff9f1;
+    transform: translateY(-1px);
+}
+
+@media (max-width: 700px) {
+    :root[data-stblock-kids="true"] .topsection.home > div.tabtitle,
+    body[data-stblock-kids="true"] .topsection.home > div.tabtitle {
+        height: 48px;
+        padding: 9px 58px 8px 14px;
+        line-height: 29px;
+        font-size: 19px;
+        box-sizing: border-box;
+    }
+    ul#settings.kids-lobby-lock {
+        top: max(6px, env(safe-area-inset-top)) !important;
+        right: max(8px, env(safe-area-inset-right)) !important;
+    }
+    ul#settings.kids-lobby-lock #geartab {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+    }
+    ul#settings.kids-lobby-lock #geartab::before { font-size: 20px; }
+}
+

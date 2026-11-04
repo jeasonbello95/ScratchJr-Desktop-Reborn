@@ -18,7 +18,6 @@ import type { EncodedStrip } from './Project';
 
 let scroll!: Scroll;
 let watermark: HTMLElement;
-
 export default class ScriptsPane {
     static get scroll () {
         return scroll;
@@ -149,6 +148,7 @@ export default class ScriptsPane {
 
     static blockFeedback (dx: number, dy: number, e: MouseEvent) {
         var script = getModelRefAs<Scripts>(ScratchJr.getActiveScript(), 'scripts')!;
+        const dragged = script.dragList[0];
         const paletteParent = gn('palette')!.parentNode as HTMLElement;
         var limit = paletteParent.offsetTop + paletteParent.offsetHeight;
         var ycor = dy + Events.dragcanvas.offsetHeight;
@@ -190,10 +190,11 @@ export default class ScriptsPane {
 
     static dropBlock (e: MouseEvent | TouchEvent, el: HTMLElement & { startx?: number; starty?: number }) {
         e.preventDefault();
+        const landing = Palette.getLandingPlace(el, e);
         var sc = ScratchJr.getActiveScript();
         var spr = getModelRefAs<Scripts>(sc, 'scripts')!.spr.id;
         var page = ScratchJr.stage.currentPage;
-        switch (Palette.getLandingPlace(el, e)) {
+        switch (landing) {
         case 'scripts':
             var dx = localx(sc, el.left!);
             var dy = localy(sc, el.top!);

@@ -81,7 +81,7 @@ export default class BlockArg {
             break;
         case 's':
             this.argValue = block.spec[4];
-            this.div = newDiv(block.div, 2, 46, 60, 20, {
+            this.div = newDiv(block.div, block.blocktype === 'storyif' ? 12 : 2, block.blocktype === 'storyif' ? 6 : 46, 60, 20, {
                 position: 'absolute',
                 zoom: (block.scale * 100) + '%'
             });
@@ -250,7 +250,7 @@ export default class BlockArg {
         var scale = this.daddy.scale;
         var dx = isText ? 8 : 16;
         var dy = 57;
-        if (this.daddy.blocktype == 'repeat') {
+        if (this.daddy.blocktype == 'repeat' || this.daddy.blocktype == 'storyif') {
             dx = Math.round(this.daddy.blockshape.width / window.devicePixelRatio / scale) - 60;
             dy = Math.round(this.daddy.blockshape.height / window.devicePixelRatio / scale) - 10;
         }
@@ -294,7 +294,7 @@ export default class BlockArg {
 
     addNumArgument (str: string) {
         var div = newHTML('div', 'numfield', this.daddy.div);
-        if (this.daddy.blocktype == 'repeat') {
+        if (this.daddy.blocktype == 'repeat' || this.daddy.blocktype == 'storyif') {
             setProps(div.style, {
                 left: (this.daddy.blockshape.width / window.devicePixelRatio - 62 * this.daddy.scale) + 'px',
                 top: (this.daddy.blockshape.height / window.devicePixelRatio - 11 * this.daddy.scale) + 'px'

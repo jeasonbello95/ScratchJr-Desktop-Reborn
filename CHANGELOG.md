@@ -5,6 +5,21 @@ All notable changes to **ScratchJr Reborn**. The repo is developed on
 
 ## [Unreleased]
 
+### Added
+- **STBlock Kids world 4 trunk mission:** children must pick up and deliver the movable trunk to a calibrated map cell before reaching Bito; the destination marker stays visible during play and calibration, and saved level 4 data migrates to the supplied trunk and Bito positions.
+- **STBlock Kids spoken mission blocks:** Pickup, drop, and interaction blocks now have child-friendly Spanish descriptions for the Kids voice feedback when dragged from the palette.
+- **World 3 Nara calibration controls:** the calibrator now exposes Nara's grid column and row as direct controls with live map preview.
+- **STBlock Kids world 3 Nara rescue:** the story now requires finding Nara at her nest, exposing the pickup block, making her follow Rayo, and bringing her to the family on the adjacent upper branch before completing the level.
+- **Story calibrator checkpoint markers:** required grid cells now appear as labeled location pins on the map while calibrating, and update live when the checkpoint coordinates are edited.
+- **STBlock Kids adventure missions:** added the `pickup`, `drop`, and `interact` ScratchJr primitives; per-world palettes now expose only the blocks required by the active mission. Runtime reports executed blocks, ordered actions, movement traces, carried/delivered objects, and activated targets for deterministic challenge evaluation.
+- **Locked scene actors and objects:** story levels can render non-editable character/object overlays with configurable local artwork, grid position, scale, bob animation, or deterministic paths. The scene calibrator can preview start/goal markers and edit actor/object JSON without exposing these entities to sprite editing.
+- **Adventure character artwork:** added compact local SVG portraits for Lumi, Tula, Bito, Nara, Mistral, and Vega.
+
+### Fixed
+- Sprite activation now falls back to a valid SVG when a legacy costume cannot produce a watermark, preventing project loading from crashing in `XMLSerializer`.
+- **Missing project media no longer blocks the editor:** unavailable sprite costumes now use a visible placeholder so loading can finish, and the text-color palette skips splash images until their asset URL is available instead of requesting `/null`.
+- **STBlock Kids story reset and stage control:** dragging or long-pressing stage characters no longer moves or deletes them in Story mode. Each green-flag run restores the player, secondary actors, and mission objects to the active world's configured start state; Libre and Robot keep normal stage interaction.
+
 ## [v2.14.1] - 2026-10-22
 
 **Patch Release: Security Hardening, Host Rejection Parity, Bounds Enforcement, and Code Quality Strictness.**

@@ -24,7 +24,7 @@ import Events from '../utils/Events';
 import Transform from './Transform';
 import Vector from '../geom/Vector';
 import type {Point} from '../geom/Vector';
-import {gn, newHTML, setCanvasSize, getIdFor, setProps, hitRect, frame, utf8ToBase64} from '../utils/lib';
+import {gn, newHTML, setCanvasSize, getIdFor, setProps, hitRect, frame, utf8ToBase64, applyResponsiveFrameScale} from '../utils/lib';
 import { CURATED_FONTS } from '../utils/FontList';
 import { sanitizeSvgElement } from '../utils/svgSanitizer';
 
@@ -80,6 +80,7 @@ let deltaPoint = {
 
 export default class Paint {
     static skipNext: boolean;
+    static kidsPaintResizeHandler: (() => void) | null;
 
 
     static get xmlns () {
@@ -195,7 +196,7 @@ export default class Paint {
 
     static setSplashShade (str: string) {
         BlockSpecs.loadCount--;
-        splashshade = 'data:image/svg+xml;base64,' + utf8ToBase64(str);
+        splashshade = str ? 'data:image/svg+xml;base64,' + utf8ToBase64(str) : null;
     }
 
     static open (bkg: boolean, md5: string | undefined, sname?: string, cname?: string, cscale?: string | number, sw?: number, sh?: number) {
@@ -208,7 +209,33 @@ export default class Paint {
         workspaceHeight = 384;
         Paint.clearWorkspace();
         frame.style.display = 'none';
-        paintFrame!.className = 'paintframe appear';
+        const kidsMobilePaint = new URLSearchParams(window.location.search).get('stblockKidsMobile') === '1';
+        paintFrame!.className = kidsMobilePaint
+            ? 'paintframe appear stblock-kids-mobile-paint'
+            : 'paintframe appear';
+        // Paint.initSprite/initBkg measure the visible canvas. Reapply the
+        // shared logical-frame sizing after the editor opens so the paint
+        // frame does not keep viewport-sized dimensions and then get scaled
+        // a second time on short mobile screens.
+        applyResponsiveFrameScale();
+        if (kidsMobilePaint) {
+            // The embedded Kids iframe already is the available mobile
+            // viewport. Scaling the paint overlay again makes it occupy only
+            // a fraction of that viewport (for example 47% on a short
+            // landscape screen), so let its responsive paint layout use the
+            // viewport directly.
+            if (Paint.kidsPaintResizeHandler) {
+                window.removeEventListener('resize', Paint.kidsPaintResizeHandler);
+            }
+            Paint.kidsPaintResizeHandler = () => {
+                paintFrame!.style.width = `${window.innerWidth}px`;
+                paintFrame!.style.height = `${window.innerHeight}px`;
+                paintFrame!.style.transform = 'none';
+                paintFrame!.style.transformOrigin = '0 0';
+            };
+            Paint.kidsPaintResizeHandler();
+            window.addEventListener('resize', Paint.kidsPaintResizeHandler);
+        }
         currentMd5 = md5 ?? null;
         isBkg = bkg;
         spriteId = sname;
@@ -330,6 +357,10 @@ export default class Paint {
     static backToProject (e: Event) {
         e.preventDefault();
         e.stopPropagation();
+        if (Paint.kidsPaintResizeHandler) {
+            window.removeEventListener('resize', Paint.kidsPaintResizeHandler);
+            Paint.kidsPaintResizeHandler = null;
+        }
         if (saving) {
             return;
         }
@@ -693,6 +724,55 @@ export default class Paint {
         Paint.setupEditPalette(pal);
         Paint.createSizeSelector(pal);
         Paint.createBrushSelector(pal);
+        if (new URLSearchParams(window.location.search).get('stblockKidsMobile') === '1') {
+            // Apply the mobile rail geometry to the actual nodes after they
+            // exist. This avoids relying on the desktop .side positioning and
+            // clipping rules when the editor is embedded in the Kids iframe.
+            leftpal.style.setProperty('position', 'absolute', 'important');
+            leftpal.style.setProperty('top', '0', 'important');
+            leftpal.style.setProperty('left', '0', 'important');
+            leftpal.style.setProperty('right', 'auto', 'important');
+            leftpal.style.setProperty('bottom', '0', 'important');
+            leftpal.style.setProperty('width', '46px', 'important');
+            leftpal.style.setProperty('height', 'auto', 'important');
+            leftpal.style.setProperty('overflow', 'visible', 'important');
+            leftpal.style.setProperty('padding', '0', 'important');
+            leftpal.style.setProperty('margin', '0', 'important');
+            leftpal.style.setProperty('z-index', '10001', 'important');
+            pal.style.setProperty('position', 'relative', 'important');
+            pal.style.setProperty('display', 'block', 'important');
+            pal.style.setProperty('width', '46px', 'important');
+            pal.style.setProperty('height', 'auto', 'important');
+            pal.style.setProperty('overflow', 'visible', 'important');
+            pal.style.setProperty('padding', '0', 'important');
+            pal.style.setProperty('margin', '0', 'important');
+
+            Array.from(pal.querySelectorAll<HTMLElement>('#painttools .element')).forEach(element => {
+                element.style.setProperty('width', '36px', 'important');
+                element.style.setProperty('height', '26px', 'important');
+                element.style.setProperty('margin', '0 auto 1px', 'important');
+                element.style.setProperty('padding', '0', 'important');
+            });
+            Array.from(pal.querySelectorAll<HTMLElement>('#sizeSelector .pensizeholder')).forEach(holder => {
+                holder.style.setProperty('width', '36px', 'important');
+                holder.style.setProperty('height', '12px', 'important');
+                holder.style.setProperty('margin', '0 auto 1px', 'important');
+            });
+            Array.from(pal.querySelectorAll<HTMLElement>('#sizeSelector .line')).forEach(line => {
+                line.style.setProperty('width', '26px', 'important');
+            });
+            const brushes = pal.querySelector<HTMLElement>('#brushSelector');
+            if (brushes) {
+                brushes.style.setProperty('width', '46px', 'important');
+                brushes.style.setProperty('margin-top', '3px', 'important');
+                brushes.style.setProperty('padding', '0 2px', 'important');
+                Array.from(brushes.querySelectorAll<HTMLElement>('.brushoption')).forEach(option => {
+                    option.style.setProperty('width', '13px', 'important');
+                    option.style.setProperty('height', '13px', 'important');
+                    option.style.setProperty('padding', '1px', 'important');
+                });
+            }
+        }
     }
 
     static setupEditPalette (pal: HTMLElement) {
@@ -814,7 +894,10 @@ export default class Paint {
         var rightpal = newHTML('div', 'side', div);
         Paint.addSidePalette(rightpal, 'selectortools', ['select', 'rotate']);
         Paint.addSidePalette(rightpal, 'edittools', ['stamper', 'scissors', 'eraser']);
-        const hasCamera = (PlatformBridge.camera == '1' || PlatformBridge.camera === true || String(PlatformBridge.camera).toLowerCase() === 'true') && Camera.available;
+        const kidsMobilePaint = new URLSearchParams(window.location.search).get('stblockKidsMobile') === '1';
+        const nativeCameraAvailable = (PlatformBridge.camera == '1' || PlatformBridge.camera === true || String(PlatformBridge.camera).toLowerCase() === 'true') && Camera.available;
+        const browserCameraAvailable = !!navigator.mediaDevices?.getUserMedia;
+        const hasCamera = nativeCameraAvailable || (kidsMobilePaint && browserCameraAvailable);
         Paint.addSidePalette(rightpal, 'filltools', hasCamera ? ['camera', 'paintbucket'] : ['paintbucket']);
     }
 
@@ -1182,6 +1265,9 @@ export default class Paint {
     }
 
     static addImageUrl (p: HTMLElement, url: string | null) {
+        if (!url) {
+            return;
+        }
         var img = document.createElement('img');
         img.src = url!;
         img.style.position = 'absolute';
@@ -1418,6 +1504,16 @@ export default class Paint {
         var xmlDoc = new DOMParser().parseFromString(str, 'text/xml');
         sanitizeSvgElement(xmlDoc.documentElement);
         var extxml = document.importNode(xmlDoc.documentElement, true);
+        if (new URLSearchParams(window.location.search).get('stblockKidsMobile') === '1') {
+            const defaultImage = extxml.querySelector('image');
+            if (defaultImage) {
+                defaultImage.setAttribute('x', '-110');
+                defaultImage.setAttribute('y', '20');
+                defaultImage.setAttribute('width', '669');
+                defaultImage.setAttribute('height', '373');
+                defaultImage.setAttribute('transform', 'rotate(0)');
+            }
+        }
         var flat = Paint.skipUnwantedElements(extxml as Element, []);
         for (var i = 0; i < flat.length; i++) {
             gn('layer1')!.appendChild(flat[i]);

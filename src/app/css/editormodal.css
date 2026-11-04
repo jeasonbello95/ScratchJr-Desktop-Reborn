@@ -334,6 +334,61 @@ body:not([data-theme="classic"]) .onekey:active {
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
 }
 
+@media (orientation: landscape) {
+    body[data-stblock-kids-mobile="true"] .picokeyboard {
+        width: 80.8056px;
+        height: 90.4166px;
+        top: 445.9189px;
+        right: 106.49px;
+        padding: 67px;
+        box-sizing: content-box;
+    }
+
+    body[data-stblock-kids-mobile="true"] .picokeyboard .insidekeyboard {
+        position: absolute;
+        inset: -67px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        width: auto;
+        height: auto;
+        margin: 0;
+        padding: 7px;
+        box-sizing: border-box;
+    }
+
+    body[data-stblock-kids-mobile="true"] .picokeyboard .onekey {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
+        height: auto;
+        min-width: 0;
+        min-height: 0;
+        margin: 0;
+        border-radius: 8px;
+        line-height: 1;
+        font-size: clamp(18px, 3vh, 28px);
+        background-size: 100% 100%;
+        touch-action: manipulation;
+    }
+
+    body[data-stblock-kids-mobile="true"] .picokeyboard .onekey.minus {
+        line-height: 1;
+        font-size: clamp(20px, 3.2vh, 30px);
+    }
+
+    body[data-stblock-kids-mobile="true"] .picokeyboard .onekey > span {
+        padding: 0;
+    }
+
+    body[data-stblock-kids-mobile="true"] .picokeyboard .onekey:active > span {
+        line-height: 1;
+        font-size: inherit;
+    }
+}
+
 :root:not([data-theme="classic"]) .loadscreenfill,
 body:not([data-theme="classic"]) .loadscreenfill {
     border-radius: var(--sjr-radius-pill);

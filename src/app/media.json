@@ -45,6 +45,9 @@
     	{"md5":"MoonBkg.svg","width":480,"height":360,"ext":"svg","name":"Moon"}
     ],
     "sprites": [
+        {"md5":"StblockKids.svg","width":193,"height":343,"ext":"svg","name":"STBlock","order":"characters,00 stblock","tags":["characters","stblock"]},
+        {"md5":"Mistral.svg","width":128,"height":128,"ext":"svg","name":"Mistral","order":"characters,00 stblock","tags":["characters","stblock"]},
+        {"md5":"StblockRobot.svg","width":366,"height":322,"ext":"svg","name":"Robot STBlock","order":"characters,00 stblock","tags":["characters","stblock"]},
     	{"md5":"Blue.svg","width":151,"height":253,"ext":"svg","name":"Tic","order":"characters,02 funky","tags":["characters","02 funky"]},
     	{"md5":"Purple.svg","width":161,"height":185,"ext":"svg","name":"Tac","order":"characters,02 funky","tags":["characters","02 funky"]},
     	{"md5":"Red.svg","width":213,"height":198,"ext":"svg","name":"Toc","order":"characters,02 funky","tags":["characters","02 funky"]},

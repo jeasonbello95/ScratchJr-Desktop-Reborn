@@ -900,3 +900,68 @@ div.boxbkg{
 .painttextok:active {
     transform: translateY(2px);
 }
+
+/* STBlock Kids mobile paint editor: keep the drawing controls inside the
+   landscape viewport instead of clipping the desktop-sized vertical palette. */
+.paintframe.stblock-kids-mobile-paint .side.up {
+    position: absolute !important;
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: 46px;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    z-index: 10001;
+    pointer-events: auto;
+}
+
+.paintframe.stblock-kids-mobile-paint #paintpalette {
+    position: relative;
+    display: block;
+    width: 46px;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+}
+
+.paintframe.stblock-kids-mobile-paint #painttools .element {
+    width: 36px;
+    height: 26px;
+    margin: 0 auto 1px;
+    padding: 0;
+    touch-action: manipulation;
+}
+
+.paintframe.stblock-kids-mobile-paint #sizeSelector {
+    margin-top: 2px;
+}
+
+.paintframe.stblock-kids-mobile-paint #sizeSelector .pensizeholder {
+    width: 36px;
+    height: 12px;
+    margin: 0 auto 1px;
+}
+
+.paintframe.stblock-kids-mobile-paint #sizeSelector .line {
+    width: 26px;
+}
+
+.paintframe.stblock-kids-mobile-paint #brushSelector {
+    width: 46px;
+    margin-top: 3px;
+    padding: 0 2px;
+}
+
+.paintframe.stblock-kids-mobile-paint #brushSelector .brushoption {
+    width: 13px;
+    height: 13px;
+    padding: 1px;
+}
+
+.paintframe.stblock-kids-mobile-paint .side.up .tool {
+    pointer-events: auto;
+}

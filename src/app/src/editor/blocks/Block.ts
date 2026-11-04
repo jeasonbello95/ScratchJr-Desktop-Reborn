@@ -13,7 +13,6 @@ const BLOCK_WIDTH_START_END = 84;
 const BLOCK_WIDTH_DEFAULT = 76;
 const BLOCK_HEIGHT_REPEAT = 82;
 const BLOCK_HEIGHT_DEFAULT = 66;
-
 export default class Block {
     // Instance state built by the constructor and shape-drawing helpers
     div: HTMLElement;
@@ -80,7 +79,7 @@ export default class Block {
     }
 
     getWidth () {
-        if (this.blocktype == 'repeat') {
+        if (this.blocktype == 'repeat' || this.blocktype == 'storyif') {
             return BLOCK_WIDTH_REPEAT;
         }
         if (this.blocktype == 'gotopage') {
@@ -93,7 +92,7 @@ export default class Block {
     }
 
     getHeight () {
-        if (this.blocktype == 'repeat') {
+        if (this.blocktype == 'repeat' || this.blocktype == 'storyif') {
             return BLOCK_HEIGHT_REPEAT;
         }
         return BLOCK_HEIGHT_DEFAULT;
@@ -116,7 +115,7 @@ export default class Block {
             || (this.image == BlockSpecs.redEnd)
             || (this.image == BlockSpecs.redEndLong
         );
-        this.cShape = (this.blocktype == 'repeat') || (this.blocktype == 'caretrepeat');
+        this.cShape = (this.blocktype == 'repeat') || (this.blocktype == 'caretrepeat') || (this.blocktype == 'storyif');
         this.prev = null as unknown as Block;
         this.next = null as unknown as Block;
         this.inside = null as unknown as Block;
@@ -282,6 +281,17 @@ export default class Block {
                 webkitTransform: dprCenterTransform(w, h)
             });
             break;
+          case 'storyif':
+            var ifWidth = Math.round(58 * this.scale * window.devicePixelRatio);
+            var ifHeight = Math.round(58 * this.scale * window.devicePixelRatio);
+            setCanvasSize(this.blockicon, ifWidth, ifHeight);
+            this.blockicon.style.left = (this.shine.width / window.devicePixelRatio - Math.round(this.scale * 65)) + 'px';
+            this.blockicon.style.top = Math.round(this.scale * 12) + 'px';
+            setProps(this.blockicon.style, {
+                position: 'absolute',
+                webkitTransform: dprCenterTransform(ifWidth, ifHeight)
+            });
+            break;
           default:
              break;
         }
@@ -379,6 +389,9 @@ export default class Block {
     /////////////////////////////////////////
 
     connectBlock (myn: number, you: Block, yourn: number) {
+        if (this.reachesForward(you)) {
+            return;
+        }
         if (this.isConnectedAfterFirst(myn, you, yourn)) {
             return;
         }
@@ -427,17 +440,47 @@ export default class Block {
     }
 
     findLast (): Block {
-        if (this.next == null) {
-            return this;
+        var block: Block = this;
+        const visited = new Set<Block>();
+        while (block.next != null && !visited.has(block)) {
+            visited.add(block);
+            if (visited.has(block.next)) {
+                break;
+            }
+            block = block.next;
         }
-        return this.next.findLast();
+        return block;
     }
 
     findFirst (): Block {
-        if (this.prev == null) {
-            return this;
+        var block: Block = this;
+        const visited = new Set<Block>();
+        while (block.prev != null && !visited.has(block)) {
+            visited.add(block);
+            if (visited.has(block.prev)) {
+                break;
+            }
+            block = block.prev;
         }
-        return this.prev.findFirst();
+        return block;
+    }
+
+    reachesForward (target: Block) {
+        const pending = [this];
+        const visited = new Set<Block>();
+        while (pending.length) {
+            const block = pending.pop()!;
+            if (block === target) {
+                return true;
+            }
+            if (visited.has(block)) {
+                continue;
+            }
+            visited.add(block);
+            if (block.next) pending.push(block.next);
+            if (block.cShape && block.inside) pending.push(block.inside);
+        }
+        return false;
     }
 
     connectLast (myn: number, you: Block, yourn: number) {
@@ -511,10 +554,17 @@ export default class Block {
         }
         var dx = this.blockshape.width / window.devicePixelRatio - 78 * this.scale;
         var dy = this.blockshape.height / window.devicePixelRatio - 82 * this.scale;
-        this.blockicon.style.left = dx + 'px';
-        this.arg.div.style.left = (this.blockshape.width / window.devicePixelRatio - 66 * this.scale) + 'px';
-        this.blockicon.style.top = dy + 'px';
-        this.arg.div.style.top = (this.blockshape.height / window.devicePixelRatio - 11 * this.scale) + 'px';
+        if (this.blocktype === 'storyif') {
+            this.blockicon.style.left = (this.blockshape.width / window.devicePixelRatio - 65 * this.scale) + 'px';
+            this.blockicon.style.top = (12 * this.scale) + 'px';
+            this.arg.div.style.left = (12 * this.scale) + 'px';
+            this.arg.div.style.top = (6 * this.scale) + 'px';
+        } else {
+            this.blockicon.style.left = dx + 'px';
+            this.arg.div.style.left = (this.blockshape.width / window.devicePixelRatio - 66 * this.scale) + 'px';
+            this.blockicon.style.top = dy + 'px';
+            this.arg.div.style.top = (this.blockshape.height / window.devicePixelRatio - 11 * this.scale) + 'px';
+        }
     }
 
     redrawShape (cnv: HTMLCanvasElement, img: HTMLImageElement) {

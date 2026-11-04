@@ -1069,35 +1069,35 @@ Blocks text fields and input fields
 
 .numfield {
     position: absolute;
-    margin: ${css_vh(0.00)};
-    padding: ${css_vh(0.00)};
+    margin: 0;
+    padding: 0px;
     border: 0px solid;
-    height: ${css_vh(3.13)};
-    width: ${css_vh(5.47)};
-    top: ${css_vh(7.16)};
-    left: ${css_vh(1.30)};
+    height: 23.9237px;
+    width: 25.0903px;
+    top: 47.9884px;
+    left: 19.537px;
     color: #77787b;
-    -moz-border-radius: ${12 * scaleMultiplier}px;
-    border-radius: ${12 * scaleMultiplier}px;
-    border: ${2 * scaleMultiplier}px solid #c0c2c3;
+    -moz-border-radius: 12px;
+    border-radius: 12px;
+    border: 2px solid #c0c2c3;
     background: #ffffff;
     pointer-events: all;
     transform: translateZ(0);
 }
 
 .numfield h3 {
-    margin: ${css_vh(0.00)};
-    padding: ${css_vh(0.00)};
+    margin: 0px;
+    padding: 0px;
     float: left;
     text-align: center;
     color: #77787b;
     font-family: Verdana;
-    font-size:  ${css_vh(1.82)};
+    font-size: 26.3518px;
     font-weight: normal;
-    height: ${css_vh(3.13)};
-    width: ${css_vh(5.47)};
+    height: 13.9237px;
+    width: 23.0903px;
     cursor: default;
-    line-height: ${css_vh(3.13)};
+    line-height: 12.9237px;
 }
 
 .numfield.on {

@@ -8,12 +8,14 @@ export default class Runtime {
     thread: Thread;
     intervalId: number | undefined;
     yield: boolean;
+    private afterSpriteCompletion: {sprite: Sprite; callback: () => void} | null;
 
     constructor () {
         this.threadsRunning = [];
         this.thread = null as unknown as Thread;
         this.intervalId = undefined;
         this.yield = false;
+        this.afterSpriteCompletion = null;
     }
 
     beginTimer () {
@@ -32,16 +34,33 @@ export default class Runtime {
 
     tickTask () {
         enginePorts().updateRunStopButtons();
-        if (this.threadsRunning.length < 1) {
-            return;
-        }
         var activeThreads: Thread[] = [];
         for (var i = 0; i < this.threadsRunning.length; i++) {
             if (this.threadsRunning[i].isRunning) {
                 activeThreads.push(this.threadsRunning[i]);
             }
         }
+        const isEventThread = (thread: Thread) => ['ontouch', 'ontouchcolor', 'ontouchsprite'].includes(thread.firstBlock.blocktype || '');
+        const hadProgramThreads = this.threadsRunning.some(thread => !isEventThread(thread));
         this.threadsRunning = activeThreads;
+        if (this.afterSpriteCompletion
+            && !activeThreads.some(thread => thread.spr === this.afterSpriteCompletion!.sprite
+                && !isEventThread(thread))) {
+            const callback = this.afterSpriteCompletion.callback;
+            this.afterSpriteCompletion = null;
+            callback();
+        }
+        const hasProgramThreads = this.threadsRunning.some(thread => thread.isRunning && !isEventThread(thread));
+        if (hadProgramThreads && !hasProgramThreads && window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+            const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {getPlayerPosition?: () => unknown; getMovementTrace?: () => unknown; getRunTelemetry?: () => unknown}}).STBLOCK_KIDS_STORY;
+            window.parent.postMessage({
+                type: 'STBLOCK_KIDS_STORY_RUN_FINISHED',
+                position: storyApi?.getPlayerPosition?.(),
+                trace: storyApi?.getMovementTrace?.(),
+                telemetry: storyApi?.getRunTelemetry?.()
+            }, window.location.origin);
+        }
+        if (this.threadsRunning.length < 1) return;
         for (var j = 0; j < this.threadsRunning.length; j++) {
             this.step(j);
         }
@@ -96,11 +115,21 @@ export default class Runtime {
         this.restartThread(spr, b);
     }
 
+    runAfterSpriteCompletes (spr: Sprite, callback: () => void) {
+        this.afterSpriteCompletion = {sprite: spr, callback};
+        if (!this.threadsRunning.some(thread => thread.spr === spr && thread.isRunning
+            && !['ontouch', 'ontouchcolor', 'ontouchsprite'].includes(thread.firstBlock.blocktype || ''))) {
+            this.afterSpriteCompletion = null;
+            callback();
+        }
+    }
+
     stopThreads () {
         for (var i = 0; i < this.threadsRunning.length; i++) {
             this.threadsRunning[i].stop();
         }
         this.threadsRunning = [];
+        this.afterSpriteCompletion = null;
     }
 
     stopThreadBlock (b: BlockLike) {

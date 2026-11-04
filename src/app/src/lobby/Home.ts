@@ -29,6 +29,7 @@ export default class Home {
 
     static init () {
         version = LobbyState.version;
+        Home.prepareKidsLobbyChrome();
         frame = gn('htmlcontents')!;
         var inner = newHTML('div', 'inner', frame);
         var div = newHTML('div', 'scrollarea', inner);
@@ -39,6 +40,30 @@ export default class Home {
         frame.ontouchend = Home.handleTouchEnd as unknown as (this: GlobalEventHandlers, ev: TouchEvent) => any;
         Home.installSjrDrop();
         Home.displayYourProjects();
+    }
+
+    static prepareKidsLobbyChrome () {
+        if (document.documentElement.dataset.stblockKids !== 'true') {
+            return;
+        }
+        const frameElement = document.getElementById('frame');
+        const topbar = document.getElementById('topbar');
+        const settings = document.getElementById('settings');
+        const lock = document.getElementById('geartab');
+        if (!frameElement || !topbar || !settings || !lock) {
+            return;
+        }
+        settings.classList.add('kids-lobby-lock');
+        settings.setAttribute('aria-label', Localization.localizeWithFallback('SETTINGS', 'Adult settings'));
+        const spacer = settings.querySelector(':scope > div');
+        if (spacer) {
+            spacer.remove();
+        }
+        lock.setAttribute('aria-label', Localization.localizeWithFallback('SETTINGS', 'Adult settings'));
+        frameElement.appendChild(settings);
+        // Keep ScratchJr's tab nodes in the DOM: Lobby.setPage updates their
+        // classes during startup and expects #hometab to exist.
+        topbar.classList.add('kids-lobby-hidden');
     }
 
     ////////////////////////////
@@ -205,18 +230,24 @@ export default class Home {
                 });
             }
             break;
-        case 'delete':
-            ScratchAudio.sndFX('cut.wav');
-            // Lazy: the editor chunk (Project/Alert) loads only when deleting.
-            import('../editor/ui/Project').then((m) => {
-                m.default.thumbnailUnique(Home.actionTarget!.thumb!, Home.actionTarget!.id, function (isUnique) {
-                    if (isUnique) {
-                        PlatformBridge.remove(Home.actionTarget!.thumb!, PlatformBridge.trace);
-                    }
+        case 'delete': {
+            const projectTarget = Home.actionTarget;
+            const projectName = projectTarget.querySelector('.projecttitle h4')?.textContent || 'Project';
+            Home.confirmDeleteProject(projectName, function () {
+                Home.actionTarget = projectTarget;
+                ScratchAudio.sndFX('cut.wav');
+                // Lazy: the editor chunk (Project/Alert) loads only when deleting.
+                import('../editor/ui/Project').then((m) => {
+                    m.default.thumbnailUnique(projectTarget.thumb!, projectTarget.id, function (isUnique) {
+                        if (isUnique) {
+                            PlatformBridge.remove(projectTarget.thumb!, function () {});
+                        }
+                    });
+                    PlatformBridge.setfield(PlatformBridge.database, projectTarget.id, 'deleted', 'YES', Home.removeProjThumb);
                 });
-                PlatformBridge.setfield(PlatformBridge.database, Home.actionTarget!.id, 'deleted', 'YES', Home.removeProjThumb);
             });
             break;
+        }
         default:
             Home.hideProjectControls(Home.actionTarget);
             break;
@@ -323,11 +354,11 @@ export default class Home {
         }
     }
 
-    static createNewProject () {
+    static createNewProject (requestedName?: string) {
         PlatformBridge.analyticsEvent('lobby', 'project_created');
         var obj: Record<string, string> = {};
         var prefix = Localization.localize('NEW_PROJECT_PREFIX');
-        obj.name = Home.getNextName(prefix || 'Project');
+        obj.name = Home.getNextName(requestedName || prefix || 'Project');
         obj.version = version || window.Settings?.scratchJrVersion || '1.0.0';
         obj.mtime = (new Date()).getTime().toString();
         IO.createProject(obj, Home.gotoEditor);
@@ -347,7 +378,11 @@ export default class Home {
             doNext(md5);
         });
         function doNext (md5: unknown) {
-            window.location.href = 'editor.html?pmd5=' + md5 + '&mode=edit';
+            var kidsParams = new URLSearchParams(window.location.search);
+            var kidsQuery = kidsParams.get('stblockKids') === '1'
+                ? '&stblockKids=1&stblockKidsMode=' + encodeURIComponent(kidsParams.get('stblockKidsMode') || 'free') + '&stblockKidsMobile=' + encodeURIComponent(kidsParams.get('stblockKidsMobile') || '0') + '&stblockFrame=' + encodeURIComponent(kidsParams.get('stblockFrame') || '')
+                : '';
+            window.location.href = 'editor.html?pmd5=' + md5 + '&mode=edit' + kidsQuery;
         }
     }
 
@@ -384,6 +419,72 @@ export default class Home {
             Home.actionTarget.parentNode.removeChild(Home.actionTarget);
         }
         Home.actionTarget = null;
+    }
+
+    static confirmDeleteProject (projectName: string, onConfirm: () => void) {
+        const doc = frame.ownerDocument;
+        const overlay = doc.createElement('div');
+        overlay.className = 'stblock-delete-confirm-overlay';
+        const dialog = doc.createElement('section');
+        dialog.className = 'stblock-delete-confirm';
+        dialog.setAttribute('role', 'alertdialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', 'stblock-delete-confirm-title');
+
+        const title = doc.createElement('h2');
+        title.id = 'stblock-delete-confirm-title';
+        title.textContent = Localization.localizeWithFallback('DELETE_PROJECT_TITLE', 'Delete project?');
+        const message = doc.createElement('p');
+        message.textContent = Localization.localizeWithFallback(
+            'DELETE_PROJECT_CONFIRM',
+            'Delete “{PROJECT_NAME}”? This cannot be undone.',
+            {PROJECT_NAME: projectName}
+        );
+
+        const actions = doc.createElement('div');
+        actions.className = 'stblock-delete-confirm-actions';
+        const cancel = doc.createElement('button');
+        cancel.className = 'stblock-delete-cancel';
+        cancel.type = 'button';
+        cancel.textContent = Localization.localizeWithFallback('DELETE_PROJECT_CANCEL', 'Cancel');
+        const remove = doc.createElement('button');
+        remove.className = 'stblock-delete-action';
+        remove.type = 'button';
+        remove.textContent = Localization.localizeWithFallback('DELETE_PROJECT_ACTION', 'Delete');
+
+        const close = function () {
+            if (overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
+        };
+        cancel.onclick = function () {
+            close();
+            Home.hideProjectControls(Home.actionTarget);
+            Home.actionTarget = null;
+        };
+        remove.onclick = function () {
+            close();
+            onConfirm();
+        };
+        overlay.onclick = function (event) {
+            if (event.target === overlay) {
+                cancel.click();
+            }
+        };
+        overlay.onkeydown = function (event) {
+            if (event.key === 'Escape') {
+                cancel.click();
+            }
+        };
+
+        actions.appendChild(cancel);
+        actions.appendChild(remove);
+        dialog.appendChild(title);
+        dialog.appendChild(message);
+        dialog.appendChild(actions);
+        overlay.appendChild(dialog);
+        doc.body.appendChild(overlay);
+        cancel.focus();
     }
 
     static getAction (e: MouseEvent) {
@@ -573,7 +674,14 @@ export default class Home {
             ribbonVertical.style.visibility = 'visible';
         }
 
-        newHTML('div', 'closex', tb);
+        var deleteButton = newHTML('div', 'closex', tb);
+        deleteButton.setAttribute('role', 'button');
+        deleteButton.setAttribute('tabindex', '0');
+        deleteButton.setAttribute('aria-label', 'Eliminar proyecto');
+        deleteButton.setAttribute('title', 'Eliminar proyecto');
+        // Keep project deletion discoverable on touch devices; the other management
+        // actions remain available through the existing project controls.
+        deleteButton.style.visibility = 'visible';
         newHTML('div', 'exportbtn', tb);
         newHTML('div', 'duplicatebtn', tb);
 

@@ -41,6 +41,15 @@ export default class UI {
     static nextpage: HTMLElement;
     static prevpage: HTMLElement;
 
+    // Original dock/parent of the toolbar buttons that fullscreen detaches, so
+    // quitting fullscreen can restore them exactly where the host placed them.
+    static fullscreenButtonStash: Array<{
+        id: string,
+        parent: Node | null,
+        next: Node | null,
+        className: string
+    }> = [];
+
     static get infoBoxOpen () {
         return infoBoxOpen;
     }
@@ -54,6 +63,16 @@ export default class UI {
         ScratchJr.setupKeypad();
         ScratchJr.setupEditableField();
         UI.aspectRatioAdjustment();
+        window.addEventListener('stblock-kids-layout', () => {
+            if (UI.isStblockKidsEditor()) {
+                UI.aspectRatioAdjustment();
+            }
+        });
+    }
+
+    static isStblockKidsEditor () {
+        return document.documentElement.dataset.stblockKids === 'true' ||
+            document.body?.dataset.stblockKidsMode !== undefined;
     }
 
     /** Clear any previously applied aspect-ratio tweaks so they can be recalculated. */
@@ -64,6 +83,8 @@ export default class UI {
         var pagecc = gn('pagecc');
         var scripts = gn('scripts');
         var stageframe = gn('stageframe');
+        var stageDiv = gn('stage');
+        var stageBackground = ScratchJr.stage && ScratchJr.stage.currentPage && ScratchJr.stage.currentPage.bkg;
         if (library) { library.style.transform = ''; }
         if (pages) { pages.style.transform = ''; pages.style.width = ''; }
         if (topsection) { topsection.style.height = ''; }
@@ -71,9 +92,28 @@ export default class UI {
         if (scripts) { scripts.style.height = ''; }
         var leftPanel = library?.parentNode as HTMLElement | null;
         var rightPanel = pages?.parentNode as HTMLElement | null;
-        if (leftPanel) { leftPanel.style.height = ''; }
-        if (rightPanel) { rightPanel.style.height = ''; rightPanel.style.width = ''; rightPanel.style.top = ''; }
+        if (leftPanel) {
+            leftPanel.style.height = '';
+            leftPanel.style.width = '';
+            leftPanel.style.left = '';
+            leftPanel.style.top = '';
+            leftPanel.style.position = '';
+        }
+        if (rightPanel) {
+            rightPanel.style.height = '';
+            rightPanel.style.width = '';
+            rightPanel.style.top = '';
+            rightPanel.style.left = '';
+            rightPanel.style.right = '';
+        }
         if (stageframe) { stageframe.style.height = ''; }
+        if (stageDiv) { stageDiv.style.left = ''; }
+        // Restore the page background's default 480x360 geometry rather than
+        // clearing width/left. The bkg is an absolutely positioned div whose
+        // only child is an absolutely positioned <img width:100%>, so leaving
+        // width unset makes it shrink-to-fit at 0px and the backdrop vanishes
+        // on desktop (mobile re-applies an explicit width further below).
+        if (stageBackground) { stageBackground.style.width = '480px'; stageBackground.style.left = '0px'; }
     }
 
     /** Shift the library and pages panels horizontally to balance gaps around the stage. */
@@ -81,6 +121,13 @@ export default class UI {
         var library = gn('library')!;
         var pages = gn('pages')!;
         var stage = gn('stage')!;
+        // On phone-sized landscape viewports the panels are docked beside the
+        // stage (free, robot and story alike). Pulling them inward to balance
+        // desktop whitespace would make the character rail cover the stage and
+        // the page rail cover the scripts.
+        var isMobileKidsPhone = UI.isStblockKidsEditor() &&
+            document.body.dataset.stblockKidsMobile === 'true';
+        if (isMobileKidsPhone) return;
         var stageBox = stage.getBoundingClientRect();
         var libraryBox = library.getBoundingClientRect();
         var pagesBox = pages.getBoundingClientRect();
@@ -111,12 +158,20 @@ export default class UI {
         var leftPanel = library.parentNode as HTMLElement;
         var rightPanel = pages.parentNode as HTMLElement;
 
-        var minStageHeight = 434;
-        var desiredScriptsHeight = Math.max(260, Math.round(docHeight * 0.30));
+        var isStblockKidsEditor = UI.isStblockKidsEditor();
+        // The phone landscape distribution (centered stage, docked rails) is
+        // shared by every kids mode: free, robot and story.
+        var isMobileKidsLandscape = isStblockKidsEditor &&
+            document.body.dataset.stblockKidsMobile === 'true';
+        var minScriptsHeight = isMobileKidsLandscape ? 112 : (isStblockKidsEditor ? 130 : 260);
+        var minStageHeight = isMobileKidsLandscape ? Math.max(150, Math.round(docHeight * 0.46)) :
+            (isStblockKidsEditor ? Math.max(180, Math.round(docHeight * 0.29)) : 434);
+        var desiredScriptsHeight = Math.max(minScriptsHeight,
+            Math.round(docHeight * (isMobileKidsLandscape ? 0.20 : (isStblockKidsEditor ? 0.24 : 0.30))));
         var maxTopHeight = Math.max(minStageHeight,
             docHeight - blockspalette.offsetHeight - desiredScriptsHeight);
         var targetTopHeight = Math.min(
-            Math.max(minStageHeight, Math.round(docHeight * 0.57)),
+            Math.max(minStageHeight, Math.round(docHeight * (isMobileKidsLandscape ? 0.65 : (isStblockKidsEditor ? 0.67 : 0.57)))),
             maxTopHeight);
 
         if (topsection) { topsection.style.height = targetTopHeight + 'px'; }
@@ -127,12 +182,94 @@ export default class UI {
             rightPanel.style.height = Math.max(200, targetTopHeight - rightPanelTop) + 'px';
         }
         if (stageframe) { stageframe.style.height = targetTopHeight + 'px'; }
+        if (isStblockKidsEditor && stageframe && ScratchJr.stage) {
+            var stage = ScratchJr.stage;
+            // ScratchJr's stage element has its own top offset inside the
+            // stage frame. Keep the visible actor canvas above the palette.
+            var stageTop = Math.round(14 * scaleMultiplier);
+            var stageScale = Math.min(scaleMultiplier,
+                Math.max(0.35, (targetTopHeight - stageTop - Math.round(12 * scaleMultiplier)) / stage.height));
+            var stageX: number;
+            var stageY: number;
+            if (isMobileKidsLandscape && stage.div.parentNode === stageframe) {
+                // On a phone the editable stage's CSS offset (left: 92px) pushes
+                // the actor canvas off-center. Drop it and center the scaled
+                // stage inside the frame, which itself is screen-centered.
+                stage.div.style.left = '0px';
+                var frameWidth = stageframe.clientWidth;
+                var frameHeight = stageframe.clientHeight || targetTopHeight;
+                stageX = (frameWidth / 2) / stageScale - stage.width / 2;
+                stageY = (frameHeight / 2) / stageScale - stage.height / 2;
+                // Dock the character and scene rails beside the stage.
+                // The stageframe's CSS width is frozen at load and can end up
+                // narrower than the 480px stage, which then sticks out past the
+                // frame. Anchoring to the frame edges would drop the rails on
+                // top of the backdrop, so use the real stage box instead.
+                var stageParent = stageframe.offsetParent as HTMLElement | null;
+                var frameLeft = (stageParent ? stageParent.offsetLeft : 0) + stageframe.offsetLeft;
+                var stageCenterX = frameLeft + frameWidth / 2;
+                var halfStageWidth = (stage.width * stageScale) / 2;
+                var stageBoxLeft = stageCenterX - halfStageWidth;
+                var stageBoxRight = stageCenterX + halfStageWidth;
+                var railGap = Math.round(56 * scaleMultiplier);
+                // Both rails share the same box. The page rail width is set in
+                // aspectRatioAdjustment (docHeight * 0.225); reuse it for the
+                // character rail so it mirrors the page panel instead of being
+                // a narrower, shorter strip.
+                var railWidth = Math.max(
+                    Math.round(docHeight * 0.225),
+                    rightPanel.offsetWidth || Math.round(frameWidth * 0.24));
+                // Drop the rails below the stage's top toolbar row so the icons
+                // stay clear (proportions tuned on the phone layout).
+                var rightTop = Math.round(docHeight * 0.15);
+                var railHeight = Math.max(120, targetTopHeight - rightTop);
+                leftPanel.style.position = 'absolute';
+                leftPanel.style.width = railWidth + 'px';
+                leftPanel.style.top = rightTop + 'px';
+                leftPanel.style.height = railHeight + 'px';
+                leftPanel.style.left = Math.max(4,
+                    Math.round(stageBoxLeft - railGap - railWidth)) + 'px';
+                rightPanel.style.width = railWidth + 'px';
+                rightPanel.style.top = rightTop + 'px';
+                rightPanel.style.height = railHeight + 'px';
+                rightPanel.style.right = 'auto';
+                rightPanel.style.left = Math.min(
+                    Math.round(docWidth - railWidth - 4),
+                    Math.round(stageBoxRight + railGap)) + 'px';
+            } else {
+                var stageLeft = Math.max(0, (stageframe.clientWidth - stage.width * stageScale) / 2);
+                stageX = (stageLeft + stage.width / 2) / stageScale - stage.width / 2;
+                stageY = (stageTop + stage.height / 2) / stageScale - stage.height / 2;
+            }
+            stage.setStageScaleAndPosition(stageScale, stageX, stageY);
+            stage.currentZoom = Math.floor(stageScale * 100) / 100;
+            stage.div.style.webkitTextSizeAdjust = Math.floor(stageScale * 100) + '%';
+            // The phone editor needs a slightly wider backdrop than ScratchJr's
+            // fixed 480px canvas so the stage fills the available mobile area.
+            if (isMobileKidsLandscape && stage.currentPage && stage.currentPage.bkg) {
+                var stageBackground = stage.currentPage.bkg;
+                var inheritedZoom = 1;
+                var zoomNode: HTMLElement | null = stageBackground;
+                while (zoomNode) {
+                    var nodeZoom = parseFloat(window.getComputedStyle(zoomNode).zoom);
+                    if (Number.isFinite(nodeZoom) && nodeZoom > 0) { inheritedZoom *= nodeZoom; }
+                    zoomNode = zoomNode.parentElement;
+                }
+                stageBackground.style.width = (494.2893 / inheritedZoom) + 'px';
+                stageBackground.style.left = (-7.14465 / inheritedZoom) + 'px';
+            }
+        }
         if (pagecc) {
             var pagesVisibleHeight = Math.max(0, pages.offsetHeight - pagecc.offsetTop - Math.round(12 * scaleMultiplier));
             pagecc.style.height = pagesVisibleHeight + 'px';
         }
         if (scripts) {
-            var scriptsHeight = Math.max(220, docHeight - scripts.offsetTop);
+            // On a phone, the script canvas must use the actual short lower band.
+            // A desktop-sized minimum here makes its inline canvas height cover
+            // most of the screen and leaves the stage, sprites, and block palette tiny.
+            var scriptsHeight = isMobileKidsLandscape ?
+                desiredScriptsHeight :
+                Math.max(isStblockKidsEditor ? 160 : 220, docHeight - scripts.offsetTop);
             if (ScriptsPane.scroll) {
                 ScriptsPane.resizeScripts(scriptsHeight);
                 if (ScratchJr.stage && ScratchJr.stage.currentPage) {
@@ -176,7 +313,11 @@ export default class UI {
         var div = newHTML('div', 'topsection', frame);
         div.setAttribute('id', 'topsection');
         if (ScratchJr.isEditable()) {
-            UI.addProjectInfo();
+            if (UI.isStblockKidsEditor()) {
+                UI.setupKidsProjectRename();
+            } else {
+                UI.addProjectInfo();
+            }
         }
         UI.leftPanel(div);
         UI.stageArea(div);
@@ -257,6 +398,32 @@ export default class UI {
         okclicky!.onmousedown = function (evt) {
             UI.hideInfoBox(evt, nameField);
         };
+    }
+
+    static setupKidsProjectRename () {
+        const renameFieldHost = newHTML('div', 'kids-project-rename-fields', frame);
+        renameFieldHost.style.display = 'none';
+        UI.addEditableName(renameFieldHost);
+
+        const kidsProjectApi = {
+            getName: function () {
+                return Project.metadata ? String(Project.metadata.name || '') : '';
+            },
+            setName: function (name: string) {
+                if (!Project.metadata || !ScratchJr.isEditable() || !projectNameTextInput) {
+                    return false;
+                }
+                const newName = String(name || '').trim().substring(0, projectNameTextInput.maxLength);
+                if (!newName) {
+                    return false;
+                }
+                projectNameTextInput.oldvalue = String(Project.metadata.name || '');
+                projectNameTextInput.value = newName;
+                UI.handleTextFieldSave(true);
+                return true;
+            }
+        };
+        (window as Window & { STBLOCK_KIDS_PROJECT?: typeof kidsProjectApi }).STBLOCK_KIDS_PROJECT = kidsProjectApi;
     }
 
     static parentalGate (evt: MouseEvent | null, callback: (e: MouseEvent) => void) {
@@ -798,6 +965,10 @@ export default class UI {
         if (!ScratchJr.runtime.inactive()) {
             ScratchJr.stopStripsFromTop(e);
         }
+        if (window.sessionStorage.getItem('stblockKidsMode') === 'story') {
+            const storyApi = (window as Window & {STBLOCK_KIDS_STORY?: {resetRun?: () => unknown}}).STBLOCK_KIDS_STORY;
+            storyApi?.resetRun?.();
+        }
         ScratchJr.resetSprites();
     }
 
@@ -964,10 +1135,23 @@ export default class UI {
         var w = Math.min(getDocumentWidth(), frame.offsetWidth);
         var h = Math.max(getDocumentHeight(), frame.offsetHeight);
         frame.appendChild(gn('stage')!);
+        UI.fullscreenButtonStash = [];
         var list = ['go', 'full'];
         for (var i = 0; i < list.length; i++) {
-            gn(list[i])!.className = gn(list[i])!.className + ' presentationmode';
-            frame.appendChild(gn(list[i])!);
+            var button = gn(list[i]);
+            if (!button) {
+                continue;
+            }
+            // Remember where the host had parked each button (its dock) so that
+            // leaving fullscreen can put it back with the same styling/state.
+            UI.fullscreenButtonStash.push({
+                id: list[i],
+                parent: button.parentNode,
+                next: button.nextSibling,
+                className: button.className
+            });
+            button.className = button.className + ' presentationmode';
+            frame.appendChild(button);
         }
         const stageOwner = getModelRefAs<Stage>(gn('stage') as HTMLElement, 'stage')!;
         var scale = Math.min((w - (136 * scaleMultiplier)) / stageOwner.width, h / stageOwner.height);
@@ -983,14 +1167,54 @@ export default class UI {
         UI.nextpage.setAttribute('class', 'nextpage on');
     }
 
+    /** Put the fullscreen toolbar buttons back in the parent the host chose. */
+    static restoreFullscreenButtons (fallback: HTMLElement) {
+        var stash = UI.fullscreenButtonStash;
+        if (!stash || !stash.length) {
+            if (gn('go')) {
+                gn('go')!.className = 'go off nopresent';
+                fallback.appendChild(gn('go')!);
+            }
+            if (gn('full')) {
+                gn('full')!.className = 'fullscreen';
+                fallback.appendChild(gn('full')!);
+            }
+            return;
+        }
+        for (var i = 0; i < stash.length; i++) {
+            var item = stash[i];
+            var button = gn(item.id);
+            if (!button) {
+                continue;
+            }
+            var parent = item.parent;
+            if (parent && parent.isConnected) {
+                var next = item.next;
+                if (next && next.parentNode === parent) {
+                    parent.insertBefore(button, next);
+                } else {
+                    parent.appendChild(button);
+                }
+            } else {
+                fallback.appendChild(button);
+            }
+            // Restore the class list, dropping "presentationmode" so the dock
+            // styling applies again. The run button follows the runtime state
+            // in case the user started or stopped scripts while fullscreen.
+            if (item.id === 'go') {
+                button.className = ScratchJr.runtime.inactive() ? 'go on' : 'go off';
+            } else {
+                button.className = item.className;
+            }
+        }
+        UI.fullscreenButtonStash = [];
+    }
+
     static quitFullScreen () {
         var div = gn('stageframe')!;
         div.appendChild(gn('stage')!);
         ScratchJr.stage.setStageScaleAndPosition(scaleMultiplier, 46, 74);
-        gn('go')!.className = 'go off nopresent';
-        div.appendChild(gn('go')!);
-        gn('full')!.className = 'fullscreen';
-        div.appendChild(gn('full')!);
+        UI.restoreFullscreenButtons(div);
         const stageOwner = getModelRefAs<Stage>(gn('stage') as HTMLElement, 'stage')!;
         stageOwner.currentZoom = 1;
         gn('stage')!.style.webkitTextSizeAdjust = '100%';
@@ -1001,6 +1225,11 @@ export default class UI {
         ScratchJr.stage.setViewPage(ScratchJr.stage.currentPage);
         Thumbs.updateSprites();
         Thumbs.updatePages();
+        // Re-apply the responsive layout so the phone distribution (centered
+        // stage + docked rails) is exactly what it was before going fullscreen.
+        if (UI.isStblockKidsEditor() && document.body.dataset.stblockKidsMobile === 'true') {
+            UI.aspectRatioAdjustment();
+        }
     }
 
     //////////////////////////////////////
